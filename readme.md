@@ -12,7 +12,7 @@
 
 ## Research
 
-In no particular order:
+Interesting/relevant research in no particular order:
 
 0.  Biernacka, M., Charatonik, W., & Drab, T. (2022). A simple and
     efficient implementation of strong call by need by an abstract

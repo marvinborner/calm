@@ -38,7 +38,7 @@ void print_term(struct term *term)
 {
 	switch (term->type) {
 	case ABS:
-		printf("[");
+		printf("[{%d} ", term->u.abs.name);
 		print_term(term->u.abs.term);
 		printf("]");
 		break;
@@ -50,7 +50,7 @@ void print_term(struct term *term)
 		printf(")");
 		break;
 	case VAR:
-		printf("%d", term->u.var);
+		printf("%d", term->u.var.name);
 		break;
 	default:
 		fprintf(stderr, "Invalid type %d\n", term->type);
