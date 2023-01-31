@@ -1,6 +1,7 @@
-#include <term.h>
 #include <stdlib.h>
 #include <stdio.h>
+
+#include <term.h>
 
 struct term *new_term(term_type type)
 {

@@ -1,9 +1,10 @@
 // Just for debugging purposes
 // -> parses custom bruijn syntax
 
+#include <stdio.h>
+
 #include <parse.h>
 #include <term.h>
-#include <stdio.h>
 
 static struct term *rec(const char **term)
 {
