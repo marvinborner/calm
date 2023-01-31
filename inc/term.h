@@ -1,7 +1,7 @@
 #ifndef TERM_H
 #define TERM_H
 
-typedef enum { INV, ABS, APP, VAR } term_type;
+typedef enum { INV, ABS, APP, VAR, CLO, CACHE } term_type;
 
 struct term {
 	term_type type;
@@ -18,6 +18,7 @@ struct term {
 			int name;
 			enum { BRUIJN_INDEX, BARENDREGT_VARIABLE } type;
 		} var;
+		void *other;
 	} u;
 };
 

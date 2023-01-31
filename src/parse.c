@@ -64,6 +64,6 @@ static void to_barendregt(struct term *term, int level, int replacement)
 struct term *parse(const char *term)
 {
 	struct term *parsed = rec(&term);
-	to_barendregt(parsed, -1, -1);
+	to_barendregt(parsed, -1, -name_generator());
 	return parsed;
 }
