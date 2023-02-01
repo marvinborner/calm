@@ -16,7 +16,7 @@ struct term {
 		} app;
 		struct {
 			int name;
-			enum { BRUIJN_INDEX, BARENDREGT_VARIABLE } type;
+			enum { BARENDREGT_VARIABLE, BRUIJN_INDEX } type;
 		} var;
 		void *other;
 	} u;
