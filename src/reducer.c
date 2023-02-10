@@ -61,9 +61,16 @@ static int name_generator(void)
 static struct stack *stack_push(struct stack *stack, void *data)
 {
 	struct stack *new = malloc(sizeof(*new));
+	/* printf("NEW: %p -> %p\n", (void *)new, (void *)stack); */
 	new->data = data;
 	new->next = stack;
 	return new;
+}
+
+static struct stack *stack_next(struct stack *stack)
+{
+	/* printf("NEXT %p -> %p\n", (void *)stack, (void *)stack->next); */
+	return stack->next;
 }
 
 static struct store *store_push(struct store *store, int key, void *data)
@@ -72,6 +79,7 @@ static struct store *store_push(struct store *store, int key, void *data)
 	struct store_data *keyed = malloc(sizeof(*keyed));
 	keyed->key = key;
 	keyed->data = data;
+	/* printf("STORE STACK\n"); */
 	elem->stack = stack_push(elem->stack, keyed);
 	return store;
 }
@@ -107,8 +115,7 @@ static int transition(struct conf *conf)
 			closure->term = term->u.app.rhs;
 			closure->store = store;
 			app->u.app.rhs->u.other = closure;
-			conf->u.econf.stack =
-				stack_push(conf->u.econf.stack, app);
+			conf->u.econf.stack = stack_push(stack, app);
 			return 0;
 		case ABS: // (2)
 			printf("(2)\n");
@@ -147,8 +154,8 @@ static int transition(struct conf *conf)
 				cache->term = new_term(VAR);
 				struct term *cache_term = new_term(CACHE);
 				cache_term->u.other = cache;
-				conf->u.econf.stack = stack_push(
-					conf->u.econf.stack, cache_term);
+				conf->u.econf.stack =
+					stack_push(stack, cache_term);
 				return 0;
 			} else { // (4)
 				printf("(4)\n");
@@ -173,10 +180,11 @@ static int transition(struct conf *conf)
 			if (cache_term->type == VAR &&
 			    !cache_term->u.var.name) {
 				printf("(5)\n");
+				/* print_term(term); */
 				cache->box->state = DONE;
 				cache->box->data = term;
 				conf->type = COMPUTED;
-				conf->u.cconf.stack = stack->next;
+				conf->u.cconf.stack = stack_next(stack);
 				conf->u.cconf.term = term;
 				return 0;
 			}
@@ -198,7 +206,7 @@ static int transition(struct conf *conf)
 					store_push(closure->store,
 						   closure->term->u.abs.name,
 						   box);
-				conf->u.econf.stack = stack->next;
+				conf->u.econf.stack = stack_next(stack);
 				return 0;
 			}
 		}
@@ -218,14 +226,16 @@ static int transition(struct conf *conf)
 				conf->type = CLOSURE;
 				conf->u.econf.term = closure->term->u.abs.term;
 				conf->u.econf.store =
-					store_push(closure->store, x, var_box);
+					store_push(closure->store,
+						   closure->term->u.abs.name,
+						   var_box);
 				struct cache *cache = malloc(sizeof(*cache));
 				cache->box = box;
 				cache->term = new_term(VAR);
 				struct term *cache_term = new_term(CACHE);
 				cache_term->u.other = cache;
-				conf->u.econf.stack = stack_push(
-					conf->u.econf.stack, cache_term);
+				conf->u.econf.stack =
+					stack_push(stack, cache_term);
 				struct term *abs = new_term(ABS);
 				abs->u.abs.name = x;
 				abs->u.abs.term = new_term(VAR);
@@ -255,7 +265,8 @@ static int transition(struct conf *conf)
 			struct term *app = new_term(APP);
 			app->u.app.lhs = term;
 			app->u.app.rhs = new_term(VAR);
-			conf->u.econf.stack = stack_push(stack->next, app);
+			conf->u.econf.stack =
+				stack_push(stack_next(stack), app);
 			return 0;
 		}
 		if (peek_term->type == APP &&
@@ -266,7 +277,7 @@ static int transition(struct conf *conf)
 			app->u.app.lhs = peek_term->u.app.lhs;
 			app->u.app.rhs = term;
 			conf->type = COMPUTED;
-			conf->u.cconf.stack = stack->next;
+			conf->u.cconf.stack = stack_next(stack);
 			conf->u.cconf.term = app;
 			return 0;
 		}
@@ -278,7 +289,7 @@ static int transition(struct conf *conf)
 			abs->u.abs.name = peek_term->u.abs.name;
 			abs->u.abs.term = term;
 			conf->type = COMPUTED;
-			conf->u.cconf.stack = stack->next;
+			conf->u.cconf.stack = stack_next(stack);
 			conf->u.cconf.term = abs;
 			return 0;
 		}
@@ -297,12 +308,14 @@ struct term *reduce(struct term *term)
 {
 	struct stack stack = { 0 };
 	struct stack store[STORE_SIZE] = { 0 };
-	struct conf econf = {
+	struct conf conf = {
 		.type = CLOSURE,
 		.u.econf.term = term,
 		.u.econf.store = (struct store *)store,
 		.u.econf.stack = &stack,
 	};
-	for_each_state(&econf);
+	for_each_state(&conf);
+	assert(conf.type == COMPUTED);
+	print_term(conf.u.cconf.term);
 	return term;
 }
