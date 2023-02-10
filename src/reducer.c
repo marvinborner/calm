@@ -47,7 +47,7 @@ struct conf {
 
 		struct { // computed
 			struct stack *stack;
-			void *term;
+			struct term *term;
 		} cconf; // green
 	} u;
 };
@@ -125,7 +125,7 @@ static int transition(struct conf *conf)
 			closure->store = store;
 			cache->term = new_term(CLO);
 			cache->term->u.other = closure;
-			conf->u.cconf.term = cache;
+			conf->u.cconf.term->u.other = cache;
 			return 0;
 		case VAR:
 			box = store_get(store, term->u.var.name);
@@ -145,8 +145,10 @@ static int transition(struct conf *conf)
 				cache = malloc(sizeof(*cache));
 				cache->box = box;
 				cache->term = new_term(VAR);
-				conf->u.econf.stack =
-					stack_push(conf->u.econf.stack, cache);
+				struct term *cache_term = new_term(CACHE);
+				cache_term->u.other = cache;
+				conf->u.econf.stack = stack_push(
+					conf->u.econf.stack, cache_term);
 				return 0;
 			} else { // (4)
 				printf("(4)\n");
@@ -171,9 +173,8 @@ static int transition(struct conf *conf)
 			if (cache_term->type == VAR &&
 			    !cache_term->u.var.name) {
 				printf("(5)\n");
-				struct box *cache_box = cache->box;
-				cache_box->state = DONE;
-				cache_box->data = term;
+				cache->box->state = DONE;
+				cache->box->data = term;
 				conf->type = COMPUTED;
 				conf->u.cconf.stack = stack->next;
 				conf->u.cconf.term = term;
@@ -192,6 +193,7 @@ static int transition(struct conf *conf)
 				box->state = TODO;
 				box->data = peek_term->u.app.rhs;
 				conf->type = CLOSURE;
+				conf->u.econf.term = closure->term->u.abs.term;
 				conf->u.econf.store =
 					store_push(closure->store,
 						   closure->term->u.abs.name,
@@ -209,15 +211,14 @@ static int transition(struct conf *conf)
 			    !box->data) { // (7)
 				printf("(7)\n");
 				int x = name_generator();
-				box = malloc(sizeof(*box));
-				box->state = DONE;
-				box->data = new_term(VAR);
-				((struct term *)box->data)->u.var.name = x;
+				struct box *var_box = malloc(sizeof(*var_box));
+				var_box->state = DONE;
+				var_box->data = new_term(VAR);
+				((struct term *)var_box->data)->u.var.name = x;
 				conf->type = CLOSURE;
+				conf->u.econf.term = closure->term->u.abs.term;
 				conf->u.econf.store =
-					store_push(closure->store,
-						   closure->term->u.abs.name,
-						   box);
+					store_push(closure->store, x, var_box);
 				struct cache *cache = malloc(sizeof(*cache));
 				cache->box = box;
 				cache->term = new_term(VAR);
@@ -270,8 +271,8 @@ static int transition(struct conf *conf)
 			return 0;
 		}
 		if (peek_term->type == ABS &&
-		    peek_term->u.app.rhs->type == VAR &&
-		    !peek_term->u.app.rhs->u.var.name) { // (11)
+		    peek_term->u.abs.term->type == VAR &&
+		    !peek_term->u.abs.term->u.var.name) { // (11)
 			printf("(11)\n");
 			struct term *abs = new_term(ABS);
 			abs->u.abs.name = peek_term->u.abs.name;

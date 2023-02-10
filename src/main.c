@@ -15,5 +15,6 @@ int main(void)
 	print_term(reduced);
 	printf("\n");
 	free_term(term);
+	free_term(reduced);
 	return 0;
 }
