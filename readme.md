@@ -1,11 +1,12 @@
-# MILCR
+# CALM
 
-> **M**ultithreaded graphically-**I**nduced **L**ambda **C**alculus
-> **R**educer
+> **C**all-by-Need **A**bstract **L**ambda **M**achine
 
 -   Strong reduction (reduction inside abstractions) of call-by-need
     lambda calculus
--   Originally intended as reducer of the `bruijn` programming language
+-   Originally intended as reducer of the
+    [`bruijn`](https://github.com/marvinborner/bruijn) programming
+    language
 -   Useful for proof assistants or as a high-level lambda-term reducer
     of functional programming languages
 -   Based on bleeding-edge research results
