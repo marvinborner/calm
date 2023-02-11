@@ -1,6 +1,6 @@
-# CALM
+# calm
 
-> **C**all-by-Need **A**bstract **L**ambda **M**achine
+> **c**all-by-need **a**bstract **l**ambda **m**achine
 
 -   Strong reduction (reduction inside abstractions) of call-by-need
     lambda calculus

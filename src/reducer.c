@@ -61,7 +61,6 @@ static int name_generator(void)
 static struct stack *stack_push(struct stack *stack, void *data)
 {
 	struct stack *new = malloc(sizeof(*new));
-	/* printf("NEW: %p -> %p\n", (void *)new, (void *)stack); */
 	new->data = data;
 	new->next = stack;
 	return new;
@@ -69,7 +68,6 @@ static struct stack *stack_push(struct stack *stack, void *data)
 
 static struct stack *stack_next(struct stack *stack)
 {
-	/* printf("NEXT %p -> %p\n", (void *)stack, (void *)stack->next); */
 	return stack->next;
 }
 
@@ -79,7 +77,6 @@ static struct store *store_push(struct store *store, int key, void *data)
 	struct store_data *keyed = malloc(sizeof(*keyed));
 	keyed->key = key;
 	keyed->data = data;
-	/* printf("STORE STACK\n"); */
 	elem->stack = stack_push(elem->stack, keyed);
 	return store;
 }
@@ -171,16 +168,17 @@ static int transition(struct conf *conf)
 	} else if (conf->type == COMPUTED) {
 		struct stack *stack = conf->u.cconf.stack;
 		struct term *term = conf->u.cconf.term;
-		if (!stack || !stack->next || !stack->data)
+		if (!stack) {
+			fprintf(stderr, "Invalid stack!\n");
 			return 1;
+		}
 		struct term *peek_term = stack->data;
-		if (peek_term->type == CACHE) { // (5)
+		if (peek_term && peek_term->type == CACHE) { // (5)
 			struct cache *cache = peek_term->u.other;
 			struct term *cache_term = cache->term;
 			if (cache_term->type == VAR &&
 			    !cache_term->u.var.name) {
 				printf("(5)\n");
-				/* print_term(term); */
 				cache->box->state = DONE;
 				cache->box->data = term;
 				conf->type = COMPUTED;
@@ -189,7 +187,7 @@ static int transition(struct conf *conf)
 				return 0;
 			}
 		}
-		if (peek_term->type == APP &&
+		if (peek_term && peek_term->type == APP &&
 		    peek_term->u.app.lhs->type == VAR &&
 		    !peek_term->u.app.lhs->u.var.name && term->type == CACHE &&
 		    ((struct cache *)term->u.other)->term->type == CLO) { // (6)
@@ -251,9 +249,8 @@ static int transition(struct conf *conf)
 				conf->u.cconf.term = box->data;
 				return 0;
 			}
-			// TODO: #:when??
 		}
-		if (peek_term->type == APP &&
+		if (peek_term && peek_term->type == APP &&
 		    peek_term->u.app.lhs->type == VAR &&
 		    !peek_term->u.app.lhs->u.var.name &&
 		    peek_term->u.app.rhs->type == CLO) { // (9)
@@ -269,7 +266,7 @@ static int transition(struct conf *conf)
 				stack_push(stack_next(stack), app);
 			return 0;
 		}
-		if (peek_term->type == APP &&
+		if (peek_term && peek_term->type == APP &&
 		    peek_term->u.app.rhs->type == VAR &&
 		    !peek_term->u.app.rhs->u.var.name) { // (10)
 			printf("(10)\n");
@@ -281,7 +278,7 @@ static int transition(struct conf *conf)
 			conf->u.cconf.term = app;
 			return 0;
 		}
-		if (peek_term->type == ABS &&
+		if (peek_term && peek_term->type == ABS &&
 		    peek_term->u.abs.term->type == VAR &&
 		    !peek_term->u.abs.term->u.var.name) { // (11)
 			printf("(11)\n");
@@ -293,6 +290,8 @@ static int transition(struct conf *conf)
 			conf->u.cconf.term = abs;
 			return 0;
 		}
+		if (!peek_term)
+			return 1;
 	}
 	fprintf(stderr, "Invalid transition state\n");
 	return 1;
@@ -316,6 +315,7 @@ struct term *reduce(struct term *term)
 	};
 	for_each_state(&conf);
 	assert(conf.type == COMPUTED);
+	to_bruijn(conf.u.cconf.term);
 	print_term(conf.u.cconf.term);
 	return term;
 }

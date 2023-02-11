@@ -24,6 +24,9 @@ struct term {
 
 struct term *new_term(term_type type);
 void print_term(struct term *term);
+void print_scheme(struct term *term);
 void free_term(struct term *term);
+void to_barendregt(struct term *term);
+void to_bruijn(struct term *term);
 
 #endif

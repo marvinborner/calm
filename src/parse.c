@@ -6,12 +6,6 @@
 #include <parse.h>
 #include <term.h>
 
-static int name_generator(void)
-{
-	static int current = 0x424242; // TODO: idk?
-	return current++;
-}
-
 static struct term *rec(const char **term)
 {
 	struct term *res = 0;
@@ -38,32 +32,9 @@ static struct term *rec(const char **term)
 	return res;
 }
 
-// TODO: WARNING: This might not be 100% correct! Verify!
-static void to_barendregt(struct term *term, int level, int replacement)
-{
-	switch (term->type) {
-	case ABS:
-		term->u.abs.name = name_generator();
-		to_barendregt(term->u.abs.term, level + 1, term->u.abs.name);
-		break;
-	case APP:
-		to_barendregt(term->u.app.lhs, level, replacement);
-		to_barendregt(term->u.app.rhs, level, replacement);
-		break;
-	case VAR:
-		if (term->u.var.type == BRUIJN_INDEX) {
-			term->u.var.name = replacement - term->u.var.name;
-			term->u.var.type = BARENDREGT_VARIABLE;
-		}
-		break;
-	default:
-		fprintf(stderr, "Invalid type %d\n", term->type);
-	}
-}
-
 struct term *parse(const char *term)
 {
 	struct term *parsed = rec(&term);
-	to_barendregt(parsed, -1, -name_generator());
+	to_barendregt(parsed);
 	return parsed;
 }
