@@ -100,6 +100,53 @@ struct term *new_term(term_type type)
 	return term;
 }
 
+struct term *duplicate_term(struct term *term)
+{
+	switch (term->type) {
+	case ABS:;
+		struct term *abs = new_term(ABS);
+		abs->u.abs.name = term->u.abs.name;
+		abs->u.abs.term = duplicate_term(term->u.abs.term);
+		return abs;
+	case APP:;
+		struct term *app = new_term(APP);
+		app->u.app.lhs = duplicate_term(term->u.app.lhs);
+		app->u.app.rhs = duplicate_term(term->u.app.rhs);
+		return app;
+	case VAR:;
+		struct term *var = new_term(VAR);
+		var->u.var.name = term->u.var.name;
+		var->u.var.type = term->u.var.type;
+		return var;
+	default:
+		fprintf(stderr, "Invalid type %d\n", term->type);
+	}
+	return 0;
+}
+
+int alpha_equivalency(struct term *a, struct term *b)
+{
+	if (a->type != b->type)
+		return 0;
+
+	switch (a->type) {
+	case ABS:
+		assert(!a->u.abs.name); // TODO: Only bruijn right now
+		return a->u.abs.name == b->u.abs.name &&
+		       alpha_equivalency(a->u.abs.term, b->u.abs.term);
+	case APP:
+		return alpha_equivalency(a->u.app.lhs, b->u.app.lhs) &&
+		       alpha_equivalency(a->u.app.rhs, b->u.app.rhs);
+	case VAR:;
+		assert(a->u.var.type == BRUIJN_INDEX &&
+		       b->u.var.type == BRUIJN_INDEX);
+		return a->u.var.name == b->u.var.name;
+	default:
+		fprintf(stderr, "Invalid type %d\n", a->type);
+	}
+	return 0;
+}
+
 void free_term(struct term *term)
 {
 	switch (term->type) {

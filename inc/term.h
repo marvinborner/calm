@@ -22,11 +22,13 @@ struct term {
 	} u;
 };
 
-struct term *new_term(term_type type);
-void print_term(struct term *term);
-void print_scheme(struct term *term);
-void free_term(struct term *term);
 void to_barendregt(struct term *term);
 void to_bruijn(struct term *term);
+struct term *new_term(term_type type);
+struct term *duplicate_term(struct term *term);
+int alpha_equivalency(struct term *a, struct term *b);
+void free_term(struct term *term);
+void print_term(struct term *term);
+void print_scheme(struct term *term);
 
 #endif
