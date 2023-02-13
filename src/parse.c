@@ -1,4 +1,5 @@
-// Just for debugging purposes
+// Copyright (c) 2023, Marvin Borner <dev@marvinborner.de>
+// Just for testing purposes
 // -> parses custom bruijn syntax
 
 #include <stdio.h>

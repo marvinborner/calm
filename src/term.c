@@ -1,3 +1,5 @@
+// Copyright (c) 2023, Marvin Borner <dev@marvinborner.de>
+
 #include <stdlib.h>
 #include <assert.h>
 #include <stdio.h>
@@ -6,7 +8,7 @@
 
 static int name_generator(void)
 {
-	static int current = 0x424242; // TODO: idk?
+	static int current = 0x4242; // TODO: idk?
 	return current++;
 }
 
@@ -121,7 +123,7 @@ struct term *duplicate_term(struct term *term)
 	default:
 		fprintf(stderr, "Invalid type %d\n", term->type);
 	}
-	return 0;
+	return term;
 }
 
 int alpha_equivalency(struct term *a, struct term *b)

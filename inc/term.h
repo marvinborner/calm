@@ -1,7 +1,9 @@
+// Copyright (c) 2023, Marvin Borner <dev@marvinborner.de>
+
 #ifndef TERM_H
 #define TERM_H
 
-typedef enum { INV, ABS, APP, VAR, CLO, CACHE } term_type;
+typedef enum { INV, ABS, APP, VAR, CLOSURE, CACHE } term_type;
 
 struct term {
 	term_type type;

@@ -1,9 +1,15 @@
+// Copyright (c) 2023, Marvin Borner <dev@marvinborner.de>
 // based on the RKNL abstract machine
+
 #include <stdlib.h>
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 
 #include <reducer.h>
+#include <gc.h>
+#include <murmur3.h>
+#include <hamt.h>
 #include <term.h>
 
 struct stack {
@@ -11,19 +17,9 @@ struct stack {
 	struct stack *next;
 };
 
-#define STORE_SIZE 128 // hashmap // TODO: Optimize?
-struct store {
-	struct stack *stack;
-};
-
-struct store_data {
-	int key;
-	void *data;
-};
-
 struct closure {
 	struct term *term;
-	struct store (*store)[STORE_SIZE];
+	HAMT store;
 };
 
 struct box {
@@ -41,7 +37,7 @@ struct conf {
 	union {
 		struct { // closure
 			struct term *term;
-			struct store (*store)[STORE_SIZE];
+			HAMT store;
 			struct stack *stack;
 		} econf; // blue
 
@@ -63,91 +59,16 @@ static struct stack *stack_push(struct stack *stack, void *data)
 	struct stack *new = malloc(sizeof(*new));
 	new->data = data;
 	new->next = stack;
-	printf("Pushing %p to %p => %p\n", data, (void *)stack, (void *)new);
 	return new;
 }
 
 static struct stack *stack_next(struct stack *stack)
 {
-	printf("Popping %p => %p\n", (void *)stack, (void *)stack->next);
 	return stack->next;
 }
 
-// no deep cloning for now // TODO: deep clone needed?
-static struct stack *stack_clone(struct stack *stack)
-{
-	struct stack *new = 0;
-	struct stack *iterator = stack;
-	while (iterator) {
-		new = stack_push(new, iterator->data);
-		iterator = stack_next(iterator);
-	}
-	return new;
-}
-
-// no deep cloning for now // TODO: deep clone needed?
-static struct store (*store_clone(struct store (*store)[STORE_SIZE]))[STORE_SIZE]
-{
-	struct store(*new)[STORE_SIZE] =
-		calloc(1, STORE_SIZE * sizeof(struct store));
-
-	for (int key = 0; key < STORE_SIZE; key++) {
-		struct store *list = &(*store)[key % STORE_SIZE];
-		if (list->stack)
-			(*new)[key].stack = stack_clone(list->stack);
-	}
-	return new;
-}
-
-static int store_replace(struct store (*store)[STORE_SIZE], int key, void *data)
-{
-	struct store *elem = &(*store)[key % STORE_SIZE];
-	struct stack *iterator = elem->stack;
-	while (iterator) {
-		struct store_data *keyed = iterator->data;
-		if (keyed->key == key) {
-			keyed->data = data;
-			printf("Replaced %d\n", key);
-			return 1;
-		}
-		iterator = stack_next(iterator);
-	}
-	return 0;
-}
-
-static struct store (*store_push(struct store (*store)[STORE_SIZE], int key,
-				 void *data))[STORE_SIZE]
-{
-	printf("Storing %p with %d (%d)\n", data, key, key % STORE_SIZE);
-	if (store_replace(store, key, data))
-		return store;
-	struct store *elem = &(*store)[key % STORE_SIZE];
-	struct store_data *keyed = malloc(sizeof(*keyed));
-	keyed->key = key;
-	keyed->data = data;
-	elem->stack = stack_push(elem->stack, keyed);
-	return store;
-}
-
-static void *store_get(struct store (*store)[STORE_SIZE], int key)
-{
-	printf("Wanting %d (%d)\n", key, key % STORE_SIZE);
-	struct store *elem = &(*store)[key % STORE_SIZE];
-	struct stack *iterator = elem->stack;
-	while (iterator) {
-		struct store_data *keyed = iterator->data;
-		if (keyed->key == key) {
-			printf("Got it: %p\n", keyed->data);
-			return keyed->data;
-		}
-		iterator = stack_next(iterator);
-	}
-	printf("Couldn't find it. Anyways..\n");
-	return 0; // => unbound variable
-}
-
-static void econf(struct conf *conf, struct term *term,
-		  struct store (*store)[STORE_SIZE], struct stack *stack)
+static void econf(struct conf *conf, struct term *term, HAMT store,
+		  struct stack *stack)
 {
 	conf->type = ECONF;
 	conf->u.econf.term = term;
@@ -162,12 +83,11 @@ static void cconf(struct conf *conf, struct stack *stack, struct term *term)
 	conf->u.cconf.term = term;
 }
 
-static int transition_1(struct term **term, struct store (**store)[STORE_SIZE],
-			struct stack **stack)
+static int transition_1(struct term **term, HAMT *store, struct stack **stack)
 {
 	struct closure *closure = malloc(sizeof(*closure));
 	closure->term = (*term)->u.app.rhs;
-	closure->store = store_clone(*store);
+	closure->store = *store;
 
 	struct term *app = new_term(APP);
 	app->u.app.lhs = new_term(VAR);
@@ -177,24 +97,19 @@ static int transition_1(struct term **term, struct store (**store)[STORE_SIZE],
 	*term = (*term)->u.app.lhs;
 	*store = *store;
 	*stack = stack_push(*stack, app);
+
 	return 0;
 }
 
-static int transition_2(struct stack **stack, struct term **term,
-			struct store (**store)[STORE_SIZE])
+static int transition_2(struct stack **stack, struct term **term, HAMT store)
 {
 	struct box *box = malloc(sizeof(*box));
 	box->state = TODO;
 	box->term = 0;
 
-	// TODO: necessary?
-	struct term *abs = new_term(ABS);
-	abs->u.abs.name = (*term)->u.abs.name;
-	abs->u.abs.term = (*term)->u.abs.term;
-
 	struct closure *closure = malloc(sizeof(*closure));
-	closure->term = abs;
-	closure->store = store_clone(*store);
+	closure->term = *term;
+	closure->store = store;
 
 	struct cache *cache = malloc(sizeof(*cache));
 	cache->box = box;
@@ -204,17 +119,16 @@ static int transition_2(struct stack **stack, struct term **term,
 	*stack = *stack;
 	*term = new_term(CACHE);
 	(*term)->u.other = cache;
+
 	return 0;
 }
 
-static int transition_3(struct term **term, struct store (**store)[STORE_SIZE],
-			struct stack **stack, struct box *box)
+static int transition_3(struct term **term, HAMT *store, struct stack **stack,
+			struct box *box)
 {
 	assert(box->term->type == CLOSURE);
 
 	struct closure *closure = box->term->u.other;
-	print_term(closure->term);
-	printf("\n");
 
 	struct cache *cache = malloc(sizeof(*cache));
 	cache->box = box;
@@ -226,6 +140,8 @@ static int transition_3(struct term **term, struct store (**store)[STORE_SIZE],
 	*term = closure->term;
 	*store = closure->store;
 	*stack = stack_push(*stack, cache_term);
+
+	free(closure);
 	return 0;
 }
 
@@ -240,7 +156,6 @@ static int transition_4(struct stack **stack, struct term **term,
 static int transition_5(struct stack **stack, struct term **term,
 			struct cache *cache)
 {
-	printf("Setting %p\n", (void *)cache->box);
 	cache->box->state = DONE;
 	cache->box->term = *term;
 
@@ -249,23 +164,21 @@ static int transition_5(struct stack **stack, struct term **term,
 	return 0;
 }
 
-static int transition_6(struct term **term, struct store (**store)[STORE_SIZE],
-			struct stack **stack, struct term *peek_term,
-			struct closure *closure)
+static int transition_6(struct term **term, HAMT *store, struct stack **stack,
+			struct term *peek_term, struct closure *closure)
 {
 	struct box *box = malloc(sizeof(*box));
 	box->state = TODO;
 	box->term = peek_term->u.app.rhs;
 
 	*term = closure->term->u.abs.term;
-	*store = store_push(closure->store, closure->term->u.abs.name, box);
+	*store = hamt_pset(closure->store, &closure->term->u.abs.name, box);
 	*stack = stack_next(*stack);
 	return 0;
 }
 
-static int transition_7(struct term **term, struct store (**store)[STORE_SIZE],
-			struct stack **stack, struct box *box,
-			struct closure *closure)
+static int transition_7(struct term **term, HAMT *store, struct stack **stack,
+			struct box *box, struct closure *closure)
 {
 	int x = name_generator();
 
@@ -286,7 +199,8 @@ static int transition_7(struct term **term, struct store (**store)[STORE_SIZE],
 	abs->u.abs.term = new_term(VAR);
 
 	*term = closure->term->u.abs.term;
-	*store = store_push(closure->store, closure->term->u.abs.name, var_box);
+	*store = hamt_pset(closure->store, (void *)&closure->term->u.abs.name,
+			   var_box);
 	*stack = stack_push(*stack, cache_term);
 	*stack = stack_push(*stack, abs);
 	return 0;
@@ -300,8 +214,8 @@ static int transition_8(struct stack **stack, struct term **term,
 	return 0;
 }
 
-static int transition_9(struct term **term, struct store (**store)[STORE_SIZE],
-			struct stack **stack, struct term *peek_term)
+static int transition_9(struct term **term, HAMT *store, struct stack **stack,
+			struct term *peek_term)
 {
 	struct closure *closure = peek_term->u.app.rhs->u.other;
 
@@ -339,41 +253,40 @@ static int transition_11(struct stack **stack, struct term **term,
 	return 0;
 }
 
-static int transition_closure(struct conf *conf)
+static int transition_closure(struct conf *conf, int i,
+			      void (*callback)(int, char))
 {
 	struct term *term = conf->u.econf.term;
-	struct store(*store)[STORE_SIZE] = conf->u.econf.store;
+	HAMT store = conf->u.econf.store;
 	struct stack *stack = conf->u.econf.stack;
-	printf("ECONF: %p %p %p\n", (void *)term, (void *)store, (void *)stack);
 
 	int ret = 1;
 	switch (term->type) {
 	case APP: // (1)
-		printf("(1)\n");
+		callback(i, '1');
 		ret = transition_1(&term, &store, &stack);
 		econf(conf, term, store, stack);
 		return ret;
 	case ABS: // (2)
-		printf("(2)\n");
-		ret = transition_2(&stack, &term, &store);
+		callback(i, '2');
+		ret = transition_2(&stack, &term, store);
 		cconf(conf, stack, term);
 		return ret;
 	case VAR:;
-		struct box *box = store_get(store, term->u.var.name);
+		/* printf("%p\n", hamt_get); */
+		struct box *box = hamt_get(store, &term->u.var.name);
 		if (!box) {
 			box = malloc(sizeof(*box));
 			box->state = DONE;
-			// TODO: Using term directly is probably fine
-			box->term = new_term(VAR);
-			box->term->u.var.name = term->u.var.name;
+			box->term = term;
 		}
 		if (box->state == TODO) { // (3)
-			printf("(3)\n");
+			callback(i, '3');
 			ret = transition_3(&term, &store, &stack, box);
 			econf(conf, term, store, stack);
 			return ret;
 		} else if (box->state == DONE) { // (4)
-			printf("(4)\n");
+			callback(i, '4');
 			ret = transition_4(&stack, &term, box);
 			cconf(conf, stack, term);
 			return ret;
@@ -386,11 +299,11 @@ static int transition_closure(struct conf *conf)
 	}
 }
 
-static int transition_computed(struct conf *conf)
+static int transition_computed(struct conf *conf, int i,
+			       void (*callback)(int, char))
 {
 	struct stack *stack = conf->u.cconf.stack;
 	struct term *term = conf->u.cconf.term;
-	printf("CCONF: %p %p\n", (void *)stack, (void *)term);
 	if (!stack) {
 		fprintf(stderr, "Invalid stack!\n");
 		return 1;
@@ -401,7 +314,7 @@ static int transition_computed(struct conf *conf)
 		struct cache *cache = peek_term->u.other;
 		struct term *cache_term = cache->term;
 		if (cache_term->type == VAR && !cache_term->u.var.name) {
-			printf("(5)\n");
+			callback(i, '5');
 			ret = transition_5(&stack, &term, cache);
 			cconf(conf, stack, term);
 			return ret;
@@ -414,8 +327,8 @@ static int transition_computed(struct conf *conf)
 		struct closure *closure =
 			((struct cache *)term->u.other)->term->u.other;
 		if (closure->term->type == ABS) {
-			printf("(6)\n");
-			struct store(*store)[STORE_SIZE];
+			callback(i, '6');
+			HAMT store;
 			ret = transition_6(&term, &store, &stack, peek_term,
 					   closure);
 			econf(conf, term, store, stack);
@@ -429,14 +342,14 @@ static int transition_computed(struct conf *conf)
 			((struct cache *)term->u.other)->term->u.other;
 		if (closure->term->type == ABS && box->state == TODO &&
 		    !box->term) { // (7)
-			printf("(7)\n");
-			struct store(*store)[STORE_SIZE];
+			callback(i, '7');
+			HAMT store;
 			ret = transition_7(&term, &store, &stack, box, closure);
 			econf(conf, term, store, stack);
 			return ret;
 		}
 		if (closure->term->type == ABS && box->state == DONE) { // (8)
-			printf("(8)\n");
+			callback(i, '8');
 			ret = transition_8(&stack, &term, box);
 			cconf(conf, stack, term);
 			return ret;
@@ -446,8 +359,8 @@ static int transition_computed(struct conf *conf)
 	    peek_term->u.app.lhs->type == VAR &&
 	    !peek_term->u.app.lhs->u.var.name &&
 	    peek_term->u.app.rhs->type == CLOSURE) { // (9)
-		printf("(9)\n");
-		struct store(*store)[STORE_SIZE];
+		callback(i, '9');
+		HAMT store;
 		ret = transition_9(&term, &store, &stack, peek_term);
 		econf(conf, term, store, stack);
 		return ret;
@@ -455,7 +368,7 @@ static int transition_computed(struct conf *conf)
 	if (peek_term && peek_term->type == APP &&
 	    peek_term->u.app.rhs->type == VAR &&
 	    !peek_term->u.app.rhs->u.var.name) { // (10)
-		printf("(10)\n");
+		callback(i, 'A');
 		ret = transition_10(&stack, &term, peek_term);
 		cconf(conf, stack, term);
 		return ret;
@@ -463,7 +376,7 @@ static int transition_computed(struct conf *conf)
 	if (peek_term && peek_term->type == ABS &&
 	    peek_term->u.abs.term->type == VAR &&
 	    !peek_term->u.abs.term->u.var.name) { // (11)
-		printf("(11)\n");
+		callback(i, 'B');
 		ret = transition_11(&stack, &term, peek_term);
 		cconf(conf, stack, term);
 		return ret;
@@ -476,35 +389,63 @@ static int transition_computed(struct conf *conf)
 	return 1;
 }
 
-static int transition(struct conf *conf)
+static int transition(struct conf *conf, int i, void (*callback)(int, char))
 {
 	if (conf->type == ECONF) {
-		return transition_closure(conf);
+		return transition_closure(conf, i, callback);
 	} else if (conf->type == CCONF) {
-		return transition_computed(conf);
+		return transition_computed(conf, i, callback);
 	}
 	fprintf(stderr, "Invalid transition state %x\n", conf->type);
 	return 1;
 }
 
-static struct conf *for_each_state(struct conf *conf)
+static struct conf *for_each_state(struct conf *conf, int i,
+				   void (*callback)(int, char))
 {
-	int ret = transition(conf);
-	return ret ? conf : for_each_state(conf);
+	int ret = 0;
+	while (!ret)
+		ret = transition(conf, i++, callback);
+	return conf;
 }
 
-struct term *reduce(struct term *term)
+static int hash_var_equal(const void *lhs, const void *rhs)
 {
+	/* return memcmp(lhs, rhs, sizeof(int)); */
+	return *(const int *)lhs != *(const int *)rhs;
+}
+
+static uint32_t hash_var(const void *key, const size_t gen)
+{
+	return murmur3_32((const uint8_t *)key, sizeof(int), gen);
+}
+
+static void nop(void *addr)
+{
+	(void)nop;
+}
+
+struct term *reduce(struct term *term, void (*callback)(int, char))
+{
+	/* GC_set_find_leak(1); */
+	/* GC_INIT(); */
+
 	struct stack stack = { 0 };
-	struct store store[STORE_SIZE] = { 0 };
+
+	struct hamt_allocator allocator = { GC_malloc, GC_realloc, nop };
+	HAMT store = hamt_create(hash_var, hash_var_equal, &allocator);
+	/* HAMT store = hamt_create(hash_var, hash_var_equal, &hamt_allocator_default); */
 
 	struct conf conf = {
 		.type = ECONF,
 		.u.econf.term = term,
-		.u.econf.store = &store,
+		.u.econf.store = store,
 		.u.econf.stack = &stack,
 	};
-	for_each_state(&conf);
+	for_each_state(&conf, 0, callback);
 	assert(conf.type == CCONF);
-	return duplicate_term(conf.u.cconf.term);
+
+	struct term *ret = duplicate_term(conf.u.cconf.term);
+	hamt_delete(store);
+	return ret;
 }
