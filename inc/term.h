@@ -6,6 +6,7 @@
 typedef enum { INV, ABS, APP, VAR, CLOSURE, CACHE } term_type;
 
 struct term {
+	int tracker;
 	term_type type;
 	union {
 		struct {

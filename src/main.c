@@ -87,8 +87,6 @@ static void callback(int i, char ch)
 
 int main(void)
 {
-	GC_INIT();
-
 	char in_template[] = TESTDIR "x.in";
 	char red_template[] = TESTDIR "x.red";
 	char trans_template[] = TESTDIR "x.trans";
@@ -123,9 +121,9 @@ int main(void)
 		to_bruijn(tests[i].res);
 		tests[i].equivalency.alpha =
 			alpha_equivalency(tests[i].res, tests[i].red);
-		free(tests[i].in);
-		free(tests[i].res);
-		free(tests[i].red);
+		/* free(tests[i].in); */
+		free_term(tests[i].res);
+		free_term(tests[i].red);
 	}
 
 	printf("=== SUMMARY ===\n");
