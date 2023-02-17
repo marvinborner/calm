@@ -1,15 +1,36 @@
 # calm
 
-> **c**all-by-need **a**bstract **l**ambda **m**achine
+> **c**alm **a**bstract **l**ambda **m**achine
 
--   Strong reduction (reduction inside abstractions) of call-by-need
-    lambda calculus
+-   **Strong** reduction (reduction inside abstractions) of
+    **call-by-need** lambda calculus
 -   Originally intended as reducer of the
     [`bruijn`](https://github.com/marvinborner/bruijn) programming
     language
 -   Useful for proof assistants or as a high-level lambda-term reducer
     of functional programming languages
 -   Based on bleeding-edge research results
+-   Exponentially big normal forms of the family $e_n=λx.c_nωx$, where
+    $ω:=λx.xx$ and $c_n$ denotes the $n$th Church numeral, consume only
+    a linear in $n$ amount of memory and are computed in linear
+    time\[0\]
+
+## Why C?
+
+You might realize that the reduction transitions are of a very
+functional nature and aren't that obvious to implement in non-functional
+languages.
+
+I used C because **(1)** most functional languages use automatic memory
+management (often using periodic garbage collecting) which unnecessarily
+slows down the transitions, **(2)** there aren't that many efficient
+lambda calculus reducers in C out there, **(3)** it's a fun challenge
+and **(4)** I like C.
+
+## Libraries
+
+-   [CHAMP](https://github.com/ammut/immutable-c-ollections) \[MIT\]:
+    Underrated efficient hash array mapped trie
 
 ## Research
 
