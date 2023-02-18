@@ -74,19 +74,19 @@ static void release(void **ptr)
 	struct tracked *tracked = *ptr;
 	tracked->tracker--;
 	if (tracked->tracker == 0) {
-		/* printf("Release %p (free)\n", tracked); */
+		/* fprintf(stderr, "Release %p (free)\n", tracked); */
 		free(*ptr);
 	} else {
-		/* printf("Release %p (%d)\n", tracked, tracked->tracker); */
+		/* fprintf(stderr, "Release %p (%d)\n", tracked, tracked->tracker); */
 	}
-	/* *ptr = 0; // TODO: ? */
+	/* *ptr = 0; // TODO: ? - nope, sry marvman */
 }
 
 static void *acquire(void *ptr)
 {
 	struct tracked *tracked = ptr;
 	tracked->tracker++;
-	/* printf("Acquire %p (%d)\n", ptr, tracked->tracker); */
+	/* fprintf(stderr, "Acquire %p (%d)\n", ptr, tracked->tracker); */
 	return ptr;
 }
 
@@ -127,6 +127,7 @@ static void release_box(struct box **box)
 {
 	release_term(&(*box)->term);
 	release((void **)box);
+	*box = 0;
 }
 
 static void release_cache(struct cache **cache)
@@ -136,12 +137,13 @@ static void release_cache(struct cache **cache)
 	release((void **)cache);
 }
 
-// expensive, only use when necessary
+// TODO: probably goes way deeper than necessary (not that it really matters though)
 static struct term *acquire_term(struct term *term)
 {
 	if (!term) // e.g. for empty boxes
 		return term;
 
+	/* fprintf(stderr, "%d\n", term->type); */
 	acquire(term);
 	switch (term->type) {
 	case ABS:
@@ -175,6 +177,20 @@ static struct box *acquire_box(struct box *box)
 	acquire(box);
 	acquire_term(box->term);
 	return box;
+}
+
+// TODO: Are these callbacks even necessary? Don't seem to make a big difference
+void store_release_callback(void *store);
+void store_release_callback(void *store)
+{
+	struct box *box = store;
+	release_box(&box);
+}
+
+void store_acquire_callback(void *store);
+void store_acquire_callback(void *store)
+{
+	acquire_box(store);
 }
 
 static struct stack *stack_push(struct stack *stack, void *data)
@@ -259,7 +275,8 @@ static int transition_2(struct stack **stack, struct term **term,
 static int transition_3(struct term **term, struct store **store,
 			struct stack **stack, struct box *box)
 {
-	struct term *orig = *term;
+	struct term *orig_term = *term;
+	struct store *orig_store = *store;
 	assert(box->term->type == CLOSURE);
 
 	struct closure *closure = box->term->u.other;
@@ -276,8 +293,8 @@ static int transition_3(struct term **term, struct store **store,
 	*store = store_acquire(closure->store);
 	*stack = stack_push(*stack, cache_term);
 
-	release_term(&orig);
-	store_release(store);
+	release_term(&orig_term);
+	store_release(&orig_store);
 	return 0;
 }
 
@@ -299,8 +316,7 @@ static int transition_5(struct stack **stack, struct term **term,
 {
 	cache->box->state = DONE;
 	cache->box->term = *term;
-	/* acquire_term(*term); */
-	acquire_box(cache->box); // TODO: ?
+	acquire_term(*term);
 
 	*stack = stack_next(*stack);
 	*term = acquire_term(*term);

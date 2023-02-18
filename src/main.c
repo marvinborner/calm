@@ -28,14 +28,17 @@ int main(void)
 	return 0;
 }
 #else
-#define TESTS 6
+
+#ifndef NTESTS
+#define NTESTS 6
+#endif
+
 #define TESTDIR "./tests/"
 
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <time.h>
-#include <gc.h>
 
 static char *read_file(const char *path)
 {
@@ -73,7 +76,7 @@ static struct {
 		int alpha;
 		int trans;
 	} equivalency;
-} tests[TESTS] = { 0 };
+} tests[NTESTS] = { 0 };
 static int current = 0;
 
 static void callback(int i, char ch)
@@ -82,7 +85,7 @@ static void callback(int i, char ch)
 		fprintf(stderr, "Transition deviation at index %d!\n", i);
 		tests[current].equivalency.trans = 0;
 	}
-	/* printf("%d: %c\n", i, ch); */
+	/* fprintf(stderr, "\n%d: %c\n", i, ch); */
 }
 
 int main(void)
@@ -91,7 +94,7 @@ int main(void)
 	char red_template[] = TESTDIR "x.red";
 	char trans_template[] = TESTDIR "x.trans";
 	int offset = strlen(TESTDIR);
-	for (int i = 0; i < TESTS; i++) {
+	for (int i = 0; i < NTESTS; i++) {
 		char ch = '0' + i + 1;
 		in_template[offset] = ch;
 		red_template[offset] = ch;
@@ -111,17 +114,16 @@ int main(void)
 	}
 
 	clock_t begin = clock();
-	for (current = 0; current < TESTS; current++) {
+	for (current = 0; current < NTESTS; current++) {
 		tests[current].res = reduce(tests[current].in, callback);
 		printf("Test %d done\n", current + 1);
 	}
 	clock_t end = clock();
 
-	for (int i = 0; i < TESTS; i++) {
+	for (int i = 0; i < NTESTS; i++) {
 		to_bruijn(tests[i].res);
 		tests[i].equivalency.alpha =
 			alpha_equivalency(tests[i].res, tests[i].red);
-		/* free(tests[i].in); */
 		free_term(tests[i].res);
 		free_term(tests[i].red);
 	}
@@ -129,7 +131,7 @@ int main(void)
 	printf("=== SUMMARY ===\n");
 	printf("Reduced tests in %.5fs\n",
 	       (double)(end - begin) / CLOCKS_PER_SEC);
-	for (int i = 0; i < TESTS; i++) {
+	for (int i = 0; i < NTESTS; i++) {
 		if (tests[i].equivalency.alpha && tests[i].equivalency.trans)
 			continue;
 		printf("Test %d: [failed]\n\talpha-equivalency: %d\n\ttrans-equivalency: %d\n",

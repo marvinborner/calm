@@ -2,6 +2,7 @@
  * MIT License
  *
  * Copyright (c) 2020 Samuel Vogelsanger <vogelsangersamuel@gmail.com>
+ * Copyright (c) 2023 Marvin Borner <dev@marvinborner.de>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -247,10 +248,20 @@ static void iter_pop(struct store_iter *iterator);
  * definitions
  */
 
+extern void store_release_callback(void *data);
+
 static void node_destroy(struct node *node)
 {
 	DEBUG_NOTICE("    destroying " store_node_debug_fmt "@%p\n",
 		     store_node_debug_args(node), (void *)node);
+
+	// release boxes in node
+	if (node->ref_count == 0) {
+		for (unsigned i = 0; i < node->element_arity; ++i) {
+			struct kv kv = node->content[i];
+			store_release_callback(kv.val);
+		}
+	}
 
 	// reference counting
 	STORE_NODE_BRANCH_T *branches =
@@ -262,12 +273,21 @@ static void node_destroy(struct node *node)
 	free(node);
 }
 
+extern void store_acquire_callback(void *data);
+
 // reference counting
 static inline struct node *store_node_acquire(const struct node *node)
 {
 	if (node == &empty_node)
 		return (struct node *)node;
 	atomic_fetch_add((uint16_t *)&node->ref_count, 1u);
+
+	// aqcuire boxes in node
+	for (unsigned i = 0; i < node->element_arity; ++i) {
+		struct kv kv = node->content[i];
+		store_acquire_callback(kv.val);
+	}
+
 	return (struct node *)node;
 }
 
@@ -898,6 +918,7 @@ static struct store *store_from(struct node *root, unsigned length,
 void store_destroy(struct store **store)
 {
 	DEBUG_NOTICE("destroying store@%p\n", (void *)*store);
+
 	store_node_release((*store)->root);
 	free(*store);
 	*store = NULL;
