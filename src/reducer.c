@@ -74,19 +74,18 @@ static void release(void **ptr)
 	struct tracked *tracked = *ptr;
 	tracked->tracker--;
 	if (tracked->tracker == 0) {
-		/* fprintf(stderr, "Release %p (free)\n", tracked); */
+		fprintf(stderr, "Release %p (free)\n", tracked);
 		free(*ptr);
 	} else {
-		/* fprintf(stderr, "Release %p (%d)\n", tracked, tracked->tracker); */
+		fprintf(stderr, "Release %p (%d)\n", tracked, tracked->tracker);
 	}
-	/* *ptr = 0; // TODO: ? - nope, sry marvman */
 }
 
 static void *acquire(void *ptr)
 {
 	struct tracked *tracked = ptr;
 	tracked->tracker++;
-	/* fprintf(stderr, "Acquire %p (%d)\n", ptr, tracked->tracker); */
+	fprintf(stderr, "Acquire %p (%d)\n", ptr, tracked->tracker);
 	return ptr;
 }
 
@@ -143,7 +142,7 @@ static struct term *acquire_term(struct term *term)
 	if (!term) // e.g. for empty boxes
 		return term;
 
-	/* fprintf(stderr, "%d\n", term->type); */
+	fprintf(stderr, "%d\n", term->type);
 	acquire(term);
 	switch (term->type) {
 	case ABS:
@@ -179,18 +178,17 @@ static struct box *acquire_box(struct box *box)
 	return box;
 }
 
-// TODO: Are these callbacks even necessary? Don't seem to make a big difference
-void store_release_callback(void *store);
-void store_release_callback(void *store)
+void store_release_callback(void *data);
+void store_release_callback(void *data)
 {
-	struct box *box = store;
+	struct box *box = data;
 	release_box(&box);
 }
 
-void store_acquire_callback(void *store);
-void store_acquire_callback(void *store)
+void store_acquire_callback(void *data);
+void store_acquire_callback(void *data)
 {
-	acquire_box(store);
+	acquire_box(data);
 }
 
 static struct stack *stack_push(struct stack *stack, void *data)
@@ -279,8 +277,6 @@ static int transition_3(struct term **term, struct store **store,
 	struct store *orig_store = *store;
 	assert(box->term->type == CLOSURE);
 
-	struct closure *closure = box->term->u.other;
-
 	struct cache *cache = track(malloc(sizeof(*cache)));
 	cache->box = box;
 	cache->term = new_term(VAR);
@@ -289,6 +285,7 @@ static int transition_3(struct term **term, struct store **store,
 	cache_term->u.other = cache;
 	acquire_term(cache_term);
 
+	struct closure *closure = box->term->u.other;
 	*term = acquire_term(closure->term);
 	*store = store_acquire(closure->store);
 	*stack = stack_push(*stack, cache_term);
@@ -307,13 +304,15 @@ static int transition_4(struct stack **stack, struct term **term,
 
 	store_release(&store);
 	release_term(&orig);
-	/* release_box(&box); */
 	return 0;
 }
 
 static int transition_5(struct stack **stack, struct term **term,
-			struct cache *cache)
+			struct term *peek_term)
 {
+	struct cache *cache = peek_term->u.other;
+
+	/* release_term(&cache->box->term); // TODO: this should be ok? */
 	cache->box->state = DONE;
 	cache->box->term = *term;
 	acquire_term(*term);
@@ -321,7 +320,7 @@ static int transition_5(struct stack **stack, struct term **term,
 	*stack = stack_next(*stack);
 	*term = acquire_term(*term);
 
-	release_cache(&cache);
+	release_term(&peek_term);
 	return 0;
 }
 
@@ -334,7 +333,6 @@ static int transition_6(struct term **term, struct store **store,
 	struct box *box = track(malloc(sizeof(*box)));
 	box->state = TODO;
 	box->term = peek_term->u.app.rhs;
-	acquire_box(box);
 
 	*term = acquire_term(closure->term->u.abs.term);
 	*store = store_acquire(
@@ -342,6 +340,7 @@ static int transition_6(struct term **term, struct store **store,
 	*stack = stack_next(*stack);
 
 	release_term(&orig);
+	release_term(&peek_term);
 	return 0;
 }
 
@@ -356,7 +355,6 @@ static int transition_7(struct term **term, struct store **store,
 	var_box->state = DONE;
 	var_box->term = new_term(VAR);
 	var_box->term->u.var.name = x;
-	acquire_box(var_box);
 
 	struct cache *cache = track(malloc(sizeof(*cache)));
 	cache->box = acquire_box(box);
@@ -472,11 +470,13 @@ static int transition_closure(struct conf *conf, int i,
 		return ret;
 	case VAR:;
 		struct box *box = store_get(store, &term->u.var.name, 0);
+		int unbound = 0;
 		if (!box) {
 			box = track(malloc(sizeof(*box)));
 			box->state = DONE;
 			box->term = term;
 			acquire_box(box);
+			unbound = 1;
 		}
 		if (box->state == TODO) { // (3)
 			callback(i, '3');
@@ -487,6 +487,8 @@ static int transition_closure(struct conf *conf, int i,
 			callback(i, '4');
 			ret = transition_4(&stack, &term, store, box);
 			cconf(conf, stack, term);
+			if (unbound)
+				release_box(&box);
 			return ret;
 		}
 		fprintf(stderr, "Invalid box state %d\n", box->state);
@@ -513,7 +515,7 @@ static int transition_computed(struct conf *conf, int i,
 		struct term *cache_term = cache->term;
 		if (cache_term->type == VAR && !cache_term->u.var.name) {
 			callback(i, '5');
-			ret = transition_5(&stack, &term, cache);
+			ret = transition_5(&stack, &term, peek_term);
 			cconf(conf, stack, term);
 			return ret;
 		}
@@ -633,6 +635,7 @@ struct term *reduce(struct term *term, void (*callback)(int, char))
 	assert(conf.type == CCONF);
 
 	struct term *ret = duplicate_term(conf.u.cconf.term);
+	/* release_term(conf.u.cconf.term); // TODO */
 	/* store_destroy(&store); // should already be freed? TODO */
 	return ret;
 }

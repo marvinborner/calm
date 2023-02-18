@@ -85,7 +85,7 @@ static void callback(int i, char ch)
 		fprintf(stderr, "Transition deviation at index %d!\n", i);
 		tests[current].equivalency.trans = 0;
 	}
-	/* fprintf(stderr, "\n%d: %c\n", i, ch); */
+	fprintf(stderr, "\n%d: %c\n", i, ch);
 }
 
 int main(void)
