@@ -250,7 +250,7 @@ static void node_destroy(struct node *node)
 	DEBUG_NOTICE("    destroying " store_node_debug_fmt "@%p\n",
 		     store_node_debug_args(node), (void *)node);
 
-	gc_free(&gc, node);
+	GC_free(node);
 }
 
 // reference counting
@@ -284,7 +284,7 @@ static struct node *node_new(uint32_t element_map, uint32_t branch_map,
 {
 	const size_t content_size = STORE_NODE_ELEMENTS_SIZE(element_arity) +
 				    STORE_NODE_BRANCHES_SIZE(branch_arity);
-	struct node *result = gc_malloc(&gc, sizeof(*result) + content_size);
+	struct node *result = GC_malloc(sizeof(*result) + content_size);
 
 	result->element_arity = element_arity;
 	result->branch_arity = branch_arity;
@@ -434,7 +434,7 @@ collision_node_new(const STORE_NODE_ELEMENT_T *values, uint8_t element_arity)
 {
 	size_t content_size = sizeof(STORE_NODE_ELEMENT_T) * element_arity;
 	struct collision_node *result =
-		gc_malloc(&gc, sizeof(*result) + content_size);
+		GC_malloc(sizeof(*result) + content_size);
 
 	result->element_arity = element_arity;
 	result->branch_arity = 0;
@@ -870,7 +870,7 @@ static int node_equals(struct node *left, struct node *right,
 static struct store *store_from(struct node *root, unsigned length,
 				STORE_HASHFN_T(hash), STORE_EQUALSFN_T(equals))
 {
-	struct store *result = gc_malloc(&gc, sizeof(*result));
+	struct store *result = GC_malloc(sizeof(*result));
 	result->ref_count = 0;
 	result->root = root;
 	result->length = length;
@@ -884,7 +884,7 @@ void store_destroy(struct store **store)
 	DEBUG_NOTICE("destroying store@%p\n", (void *)*store);
 
 	store_node_release((*store)->root);
-	gc_free(&gc, *store);
+	GC_free(*store);
 	*store = NULL;
 }
 

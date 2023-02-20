@@ -94,8 +94,7 @@ static void callback(int i, char ch, void *data)
 
 int main(int argc, char **argv)
 {
-	gc_start(&gc, &argc);
-	(void)argv;
+	GC_INIT();
 
 	struct test tests[NTESTS] = { 0 };
 
@@ -131,14 +130,11 @@ int main(int argc, char **argv)
 
 	for (int i = 0; i < NTESTS; i++) {
 		to_bruijn(tests[i].res);
-		print_term(tests[i].res);
-		printf("\n");
-		print_term(tests[i].red);
-		printf("\n");
 		tests[i].equivalency.alpha =
 			alpha_equivalency(tests[i].res, tests[i].red);
 		free_term(tests[i].res);
 		free_term(tests[i].red);
+		free(tests[i].trans);
 	}
 
 	printf("=== SUMMARY ===\n");
@@ -151,7 +147,5 @@ int main(int argc, char **argv)
 		       i + 1 + STARTTEST, tests[i].equivalency.alpha,
 		       tests[i].equivalency.trans);
 	}
-
-	gc_stop(&gc);
 }
 #endif

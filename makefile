@@ -2,18 +2,18 @@
 # SPDX-License-Identifier: MIT
 
 CC = gcc
-LD = ld
 TG = ctags
 
 BUILD = $(PWD)/build
 SRC = $(PWD)/src
 INC = $(PWD)/inc
+LIB = $(PWD)/lib
 SRCS = $(wildcard $(SRC)/*.c)
 OBJS = $(patsubst $(SRC)/%.c, $(BUILD)/%.o, $(SRCS))
 
 CFLAGS_DEBUG = -Wno-error -g -O0 -Wno-unused -fsanitize=address,undefined,leak
 CFLAGS_WARNINGS = -Wall -Wextra -Wshadow -Wpointer-arith -Wwrite-strings -Wredundant-decls -Wnested-externs -Wmissing-declarations -Wstrict-prototypes -Wmissing-prototypes -Wcast-qual -Wswitch-default -Wswitch-enum -Wunreachable-code -Wundef -Wold-style-definition -pedantic -Wno-switch-enum
-CFLAGS = $(CFLAGS_WARNINGS) -std=c99 -fno-omit-frame-pointer -Ofast -I$(INC) -ggdb3
+CFLAGS = $(CFLAGS_WARNINGS) -std=c99 -Ofast -L$(LIB)/bdwgc/lib -lgc -I$(LIB)/bdwgc/inc -I$(INC)
 
 ifdef TEST # TODO: Somehow clean automagically
 CFLAGS += -DTEST -DNTESTS=$(TEST)

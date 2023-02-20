@@ -60,7 +60,7 @@ static int name_generator(void)
 
 static struct stack *stack_push(struct stack *stack, void *data)
 {
-	struct stack *new = gc_malloc(&gc, sizeof(*new));
+	struct stack *new = GC_malloc(sizeof(*new));
 	new->data = data;
 	new->next = stack;
 	return new;
@@ -91,7 +91,7 @@ static void cconf(struct conf *conf, struct stack *stack, struct term *term)
 static int transition_1(struct term **term, struct store **store,
 			struct stack **stack)
 {
-	struct closure *closure = gc_malloc(&gc, sizeof(*closure));
+	struct closure *closure = GC_malloc(sizeof(*closure));
 	closure->term = (*term)->u.app.rhs;
 	closure->store = *store;
 
@@ -110,15 +110,15 @@ static int transition_1(struct term **term, struct store **store,
 static int transition_2(struct stack **stack, struct term **term,
 			struct store *store)
 {
-	struct box *box = gc_malloc(&gc, sizeof(*box));
+	struct box *box = GC_malloc(sizeof(*box));
 	box->state = TODO;
 	box->term = 0;
 
-	struct closure *closure = gc_malloc(&gc, sizeof(*closure));
+	struct closure *closure = GC_malloc(sizeof(*closure));
 	closure->term = *term;
 	closure->store = store;
 
-	struct cache *cache = gc_malloc(&gc, sizeof(*cache));
+	struct cache *cache = GC_malloc(sizeof(*cache));
 	cache->box = box;
 	cache->term = new_term(CLOSURE);
 	cache->term->u.other = closure;
@@ -135,7 +135,7 @@ static int transition_3(struct term **term, struct store **store,
 {
 	assert(box->term->type == CLOSURE);
 
-	struct cache *cache = gc_malloc(&gc, sizeof(*cache));
+	struct cache *cache = GC_malloc(sizeof(*cache));
 	cache->box = box;
 	cache->term = new_term(VAR);
 
@@ -178,7 +178,7 @@ static int transition_6(struct term **term, struct store **store,
 			struct stack **stack, struct term *peek_term,
 			struct closure *closure)
 {
-	struct box *box = gc_malloc(&gc, sizeof(*box));
+	struct box *box = GC_malloc(sizeof(*box));
 	box->state = TODO;
 	box->term = peek_term->u.app.rhs;
 
@@ -195,12 +195,12 @@ static int transition_7(struct term **term, struct store **store,
 {
 	int x = name_generator();
 
-	struct box *var_box = gc_malloc(&gc, sizeof(*var_box));
+	struct box *var_box = GC_malloc(sizeof(*var_box));
 	var_box->state = DONE;
 	var_box->term = new_term(VAR);
 	var_box->term->u.var.name = x;
 
-	struct cache *cache = gc_malloc(&gc, sizeof(*cache));
+	struct cache *cache = GC_malloc(sizeof(*cache));
 	cache->box = box;
 	cache->term = new_term(VAR);
 
@@ -293,7 +293,7 @@ static int transition_closure(struct conf *conf, int i,
 	case VAR:;
 		struct box *box = store_get(store, &term->u.var.name, 0);
 		if (!box) {
-			box = gc_malloc(&gc, sizeof(*box));
+			box = GC_malloc(sizeof(*box));
 			box->state = DONE;
 			box->term = term;
 		}

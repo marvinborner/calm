@@ -5,7 +5,6 @@
 #include <stdio.h>
 
 #include <parse.h>
-#include <gc.h>
 #include <term.h>
 
 static struct term *rec(const char **term)
@@ -36,7 +35,7 @@ static struct term *rec(const char **term)
 
 struct term *parse(const char *term)
 {
-	struct term *parsed = gc_make_static(&gc, rec(&term));
+	struct term *parsed = rec(&term);
 	to_barendregt(parsed);
 	return parsed;
 }

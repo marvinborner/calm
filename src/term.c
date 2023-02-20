@@ -94,7 +94,7 @@ void to_bruijn(struct term *term)
 
 struct term *new_term(term_type type)
 {
-	struct term *term = gc_calloc(&gc, 1, sizeof(*term));
+	struct term *term = GC_malloc(sizeof(*term));
 	if (!term) {
 		fprintf(stderr, "Out of memory!\n");
 		abort();
@@ -155,15 +155,15 @@ void free_term(struct term *term)
 	switch (term->type) {
 	case ABS:
 		free_term(term->u.abs.term);
-		gc_free(&gc, term);
+		GC_free(term);
 		break;
 	case APP:
 		free_term(term->u.app.lhs);
 		free_term(term->u.app.rhs);
-		gc_free(&gc, term);
+		GC_free(term);
 		break;
 	case VAR:
-		gc_free(&gc, term);
+		GC_free(term);
 		break;
 	default:
 		fprintf(stderr, "Invalid type %d\n", term->type);
