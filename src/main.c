@@ -5,9 +5,10 @@
 #include <parse.h>
 #include <term.h>
 #include <reducer.h>
+#include <gc.h>
 
 #ifndef TEST
-static void callback(int i, char ch)
+static void callback(int i, char ch, void *data)
 {
 	printf("%d: %c\n", i, ch);
 }
@@ -44,6 +45,17 @@ int main(void)
 #include <errno.h>
 #include <time.h>
 
+struct test {
+	struct term *in;
+	struct term *res;
+	struct term *red;
+	char *trans;
+	struct {
+		int alpha;
+		int trans;
+	} equivalency;
+};
+
 static char *read_file(const char *path)
 {
 	FILE *f = fopen(path, "rb");
@@ -70,30 +82,23 @@ static char *read_file(const char *path)
 	return string;
 }
 
-// global vars suck I know but how could I do it any other way?
-static struct {
-	struct term *in;
-	struct term *res;
-	struct term *red;
-	char *trans;
-	struct {
-		int alpha;
-		int trans;
-	} equivalency;
-} tests[NTESTS] = { 0 };
-static int current = 0;
-
-static void callback(int i, char ch)
+static void callback(int i, char ch, void *data)
 {
-	if (ch != tests[current].trans[i]) {
+	struct test *test = data;
+	if (ch != test->trans[i]) {
 		fprintf(stderr, "Transition deviation at index %d!\n", i);
-		tests[current].equivalency.trans = 0;
+		test->equivalency.trans = 0;
 	}
-	fprintf(stderr, "\n%d: %c\n", i, ch);
+	/* fprintf(stderr, "\n%d: %c\n", i, ch); */
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
+	gc_start(&gc, &argc);
+	(void)argv;
+
+	struct test tests[NTESTS] = { 0 };
+
 	char in_template[] = TESTDIR "x.in";
 	char red_template[] = TESTDIR "x.red";
 	char trans_template[] = TESTDIR "x.trans";
@@ -118,14 +123,18 @@ int main(void)
 	}
 
 	clock_t begin = clock();
-	for (current = 0; current < NTESTS; current++) {
-		tests[current].res = reduce(tests[current].in, callback);
-		printf("Test %d done\n", current + 1 + STARTTEST);
+	for (int i = 0; i < NTESTS; i++) {
+		tests[i].res = reduce(tests[i].in, callback, &tests[i]);
+		printf("Test %d done\n", i + 1 + STARTTEST);
 	}
 	clock_t end = clock();
 
 	for (int i = 0; i < NTESTS; i++) {
 		to_bruijn(tests[i].res);
+		print_term(tests[i].res);
+		printf("\n");
+		print_term(tests[i].red);
+		printf("\n");
 		tests[i].equivalency.alpha =
 			alpha_equivalency(tests[i].res, tests[i].red);
 		free_term(tests[i].res);
@@ -142,5 +151,7 @@ int main(void)
 		       i + 1 + STARTTEST, tests[i].equivalency.alpha,
 		       tests[i].equivalency.trans);
 	}
+
+	gc_stop(&gc);
 }
 #endif

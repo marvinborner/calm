@@ -5,6 +5,7 @@
 #include <stdio.h>
 
 #include <term.h>
+#include <gc.h>
 
 static int name_generator(void)
 {
@@ -93,7 +94,7 @@ void to_bruijn(struct term *term)
 
 struct term *new_term(term_type type)
 {
-	struct term *term = calloc(1, sizeof(*term));
+	struct term *term = gc_calloc(&gc, 1, sizeof(*term));
 	if (!term) {
 		fprintf(stderr, "Out of memory!\n");
 		abort();
@@ -154,15 +155,15 @@ void free_term(struct term *term)
 	switch (term->type) {
 	case ABS:
 		free_term(term->u.abs.term);
-		free(term);
+		gc_free(&gc, term);
 		break;
 	case APP:
 		free_term(term->u.app.lhs);
 		free_term(term->u.app.rhs);
-		free(term);
+		gc_free(&gc, term);
 		break;
 	case VAR:
-		free(term);
+		gc_free(&gc, term);
 		break;
 	default:
 		fprintf(stderr, "Invalid type %d\n", term->type);

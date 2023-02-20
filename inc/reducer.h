@@ -5,6 +5,7 @@
 
 #include <term.h>
 
-struct term *reduce(struct term *term, void (*callback)(int, char));
+struct term *reduce(struct term *term, void (*callback)(int, char, void *),
+		    void *data);
 
 #endif
