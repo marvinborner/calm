@@ -74,10 +74,11 @@ static void release(void **ptr)
 	struct tracked *tracked = *ptr;
 	tracked->tracker--;
 	if (tracked->tracker == 0) {
-		fprintf(stderr, "Release %p (free)\n", tracked);
+		fprintf(stderr, "Release %p (free)\n", (void *)tracked);
 		free(*ptr);
 	} else {
-		fprintf(stderr, "Release %p (%d)\n", tracked, tracked->tracker);
+		fprintf(stderr, "Release %p (%d)\n", (void *)tracked,
+			tracked->tracker);
 	}
 }
 
@@ -137,6 +138,7 @@ static void release_cache(struct cache **cache)
 }
 
 // TODO: probably goes way deeper than necessary (not that it really matters though)
+// TODO: Reduce usage as "specific selection by acquiring once and releasing all other"
 static struct term *acquire_term(struct term *term)
 {
 	if (!term) // e.g. for empty boxes
@@ -236,6 +238,7 @@ static int transition_1(struct term **term, struct store **store,
 	app->u.app.rhs = new_term(CLOSURE);
 	app->u.app.rhs->u.other = closure;
 	acquire_term(app);
+	fprintf(stderr, "TRACK %p\n", (void *)app->u.app.rhs);
 
 	*term = acquire_term((*term)->u.app.lhs);
 	*store = *store;
@@ -311,16 +314,26 @@ static int transition_5(struct stack **stack, struct term **term,
 			struct term *peek_term)
 {
 	struct cache *cache = peek_term->u.other;
+	struct box *box = cache->box;
 
-	/* release_term(&cache->box->term); // TODO: this should be ok? */
-	cache->box->state = DONE;
-	cache->box->term = *term;
-	acquire_term(*term);
+	if (box->tracker > 1) {
+		fprintf(stderr, "BOX %p EXISTS\n", (void *)box);
+		struct term **orig = &box->term;
+		box->state = DONE;
+		box->term = *term;
+		acquire_term(*term);
+		release_term(orig);
+	} else {
+		release_box(&cache->box); // TODO
+	}
+
+	release_term(&cache->term);
+	release((void **)&cache);
+	release((void **)&peek_term);
 
 	*stack = stack_next(*stack);
-	*term = acquire_term(*term);
+	*term = *term;
 
-	release_term(&peek_term);
 	return 0;
 }
 
@@ -357,7 +370,7 @@ static int transition_7(struct term **term, struct store **store,
 	var_box->term->u.var.name = x;
 
 	struct cache *cache = track(malloc(sizeof(*cache)));
-	cache->box = acquire_box(box);
+	cache->box = box;
 	cache->term = new_term(VAR);
 
 	struct term *cache_term = new_term(CACHE);
@@ -609,15 +622,15 @@ static struct conf *for_each_state(struct conf *conf, int i,
 	return conf;
 }
 
-static int hash_var_equal(const void *lhs, const void *rhs)
+static int hash_var_equal(void *lhs, void *rhs)
 {
 	/* return memcmp(lhs, rhs, sizeof(int)); */
-	return *(const int *)lhs == *(const int *)rhs;
+	return *(int *)lhs == *(int *)rhs;
 }
 
-static uint32_t hash_var(const void *key)
+static uint32_t hash_var(void *key)
 {
-	return murmur3_32((const uint8_t *)key, sizeof(int), 0);
+	return murmur3_32((uint8_t *)key, sizeof(int), 0);
 }
 
 struct term *reduce(struct term *term, void (*callback)(int, char))

@@ -29,7 +29,7 @@
 #include <stddef.h>
 
 #ifndef STORE_VERBOSITY
-#define STORE_VERBOSITY 0
+#define STORE_VERBOSITY 5
 #endif
 
 #define DEBUG_NOTICE(fmt, ...)                                                 \
@@ -55,14 +55,13 @@
  * These are mostly for convenience
  */
 
-#define STORE_HASHFN_T(name) uint32_t (*name)(const STORE_KEY_T)
-#define STORE_EQUALSFN_T(name)                                                 \
-	int (*name)(const STORE_KEY_T left, const STORE_KEY_T right)
+#define STORE_HASHFN_T(name) uint32_t (*name)(STORE_KEY_T)
+#define STORE_EQUALSFN_T(name) int (*name)(STORE_KEY_T left, STORE_KEY_T right)
 #define STORE_ASSOCFN_T(name)                                                  \
 	STORE_VALUE_T(*name)                                                   \
-	(const STORE_KEY_T key, const STORE_VALUE_T old_value, void *user_data)
+	(STORE_KEY_T key, STORE_VALUE_T old_value, void *user_data)
 #define STORE_VALUE_EQUALSFN_T(name)                                           \
-	int (*name)(const STORE_VALUE_T left, const STORE_VALUE_T right)
+	int (*name)(STORE_VALUE_T left, STORE_VALUE_T right)
 
 /**
  * These macros help with defining the various callbacks. Use them like so:
@@ -74,17 +73,17 @@
  * @endcode
  */
 
-#define STORE_MAKE_HASHFN(name, arg_1) uint32_t name(const STORE_KEY_T arg_1)
+#define STORE_MAKE_HASHFN(name, arg_1) uint32_t name(STORE_KEY_T arg_1)
 #define STORE_MAKE_EQUALSFN(name, arg_l, arg_r)                                \
-	int name(const STORE_KEY_T arg_l, const STORE_KEY_T arg_r)
+	int name(STORE_KEY_T arg_l, STORE_KEY_T arg_r)
 #define STORE_MAKE_ASSOCFN(name, key_arg, value_arg, user_data_arg)            \
-	STORE_VALUE_T name(const STORE_KEY_T key_arg,                          \
-			   const STORE_VALUE_T value_arg, void *user_data_arg)
+	STORE_VALUE_T name(STORE_KEY_T key_arg, STORE_VALUE_T value_arg,       \
+			   void *user_data_arg)
 #define STORE_MAKE_VALUE_EQUALSFN(name, arg_l, arg_r)                          \
-	int name(const STORE_VALUE_T arg_l, const STORE_VALUE_T arg_r)
+	int name(STORE_VALUE_T arg_l, STORE_VALUE_T arg_r)
 
 struct store {
-	volatile uint32_t ref_count;
+	uint32_t ref_count;
 	unsigned length;
 	struct node *root;
 
@@ -117,7 +116,7 @@ void store_destroy(struct store **store);
  * @param store
  * @return
  */
-struct store *store_acquire(const struct store *store);
+struct store *store_acquire(struct store *store);
 
 /**
  * Atomically decreases the reference count of a map and calls store_destroy if it caused the count to drop to zero.
@@ -144,8 +143,7 @@ unsigned store_length(const struct store *store);
  * @param found is set to 0 if key is not set
  * @return
  */
-STORE_VALUE_T store_get(const struct store *store, const STORE_KEY_T key,
-			int *found);
+STORE_VALUE_T store_get(const struct store *store, STORE_KEY_T key, int *found);
 
 /**
  * Returns a new map derived from store but with key set to value.
@@ -159,21 +157,8 @@ STORE_VALUE_T store_get(const struct store *store, const STORE_KEY_T key,
  * @param replaced
  * @return a new store
  */
-struct store *store_set(const struct store *store, const STORE_KEY_T key,
-			const STORE_VALUE_T value, int *replaced);
-
-/**
- * Returns a new map derived from store but without a mapping for key.
- *
- * Reference count of the new map is zero.
- *
- * @param store
- * @param key
- * @param modified
- * @return
- */
-struct store *store_del(const struct store *store, const STORE_KEY_T key,
-			int *modified);
+struct store *store_set(const struct store *store, STORE_KEY_T key,
+			STORE_VALUE_T value, int *replaced);
 
 /**
  * Creates a new store with the given hash and equals functions, and inserts the given keys and values.
@@ -204,8 +189,8 @@ struct store *store_of(STORE_HASHFN_T(hash), STORE_EQUALSFN_T(equals),
  * @param user_data
  * @return
  */
-struct store *store_assoc(const struct store *store, const STORE_KEY_T key,
-			  STORE_ASSOCFN_T(fn), const void *user_data);
+struct store *store_assoc(const struct store *store, STORE_KEY_T key,
+			  STORE_ASSOCFN_T(fn), void *user_data);
 
 /**
  * Compares two maps for equality. A lot of short-circuiting is done on the assumption that unequal hashes
@@ -228,7 +213,7 @@ struct store_iter {
 	unsigned element_arity;
 	unsigned branch_cursor_stack[8];
 	unsigned branch_arity_stack[8];
-	const void *node_stack[8];
+	void *node_stack[8];
 };
 
 /**

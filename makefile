@@ -11,12 +11,15 @@ INC = $(PWD)/inc
 SRCS = $(wildcard $(SRC)/*.c)
 OBJS = $(patsubst $(SRC)/%.c, $(BUILD)/%.o, $(SRCS))
 
-CFLAGS_DEBUG = -Wno-error -g -O0 -Wno-unused -fsanitize=address -fsanitize=undefined
-CFLAGS_WARNINGS = -Wall -Wextra -Wshadow -Wpointer-arith -Wwrite-strings -Wredundant-decls -Wnested-externs -Wformat=2 -Wmissing-declarations -Wstrict-prototypes -Wmissing-prototypes -Wcast-qual -Wswitch-default -Wswitch-enum -Wunreachable-code -Wundef -Wold-style-definition -Wvla -pedantic -Wno-switch-enum
-CFLAGS = $(CFLAGS_WARNINGS) -std=c99 -fno-omit-frame-pointer -Ofast -I$(INC)
+CFLAGS_DEBUG = -Wno-error -g -O0 -Wno-unused -fsanitize=address,undefined,leak
+CFLAGS_WARNINGS = -Wall -Wextra -Wshadow -Wpointer-arith -Wwrite-strings -Wredundant-decls -Wnested-externs -Wmissing-declarations -Wstrict-prototypes -Wmissing-prototypes -Wcast-qual -Wswitch-default -Wswitch-enum -Wunreachable-code -Wundef -Wold-style-definition -pedantic -Wno-switch-enum
+CFLAGS = $(CFLAGS_WARNINGS) -std=c99 -fno-omit-frame-pointer -Ofast -I$(INC) -ggdb3
 
 ifdef TEST # TODO: Somehow clean automagically
 CFLAGS += -DTEST -DNTESTS=$(TEST)
+ifdef START
+CFLAGS += -DSTARTTEST=$(START)
+endif
 endif
 
 ifdef DEBUG # TODO: Somehow clean automagically

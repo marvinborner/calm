@@ -33,6 +33,10 @@ int main(void)
 #define NTESTS 6
 #endif
 
+#ifndef STARTTEST
+#define STARTTEST 0
+#endif
+
 #define TESTDIR "./tests/"
 
 #include <stdlib.h>
@@ -95,7 +99,7 @@ int main(void)
 	char trans_template[] = TESTDIR "x.trans";
 	int offset = strlen(TESTDIR);
 	for (int i = 0; i < NTESTS; i++) {
-		char ch = '0' + i + 1;
+		char ch = '0' + i + 1 + STARTTEST;
 		in_template[offset] = ch;
 		red_template[offset] = ch;
 		trans_template[offset] = ch;
@@ -116,7 +120,7 @@ int main(void)
 	clock_t begin = clock();
 	for (current = 0; current < NTESTS; current++) {
 		tests[current].res = reduce(tests[current].in, callback);
-		printf("Test %d done\n", current + 1);
+		printf("Test %d done\n", current + 1 + STARTTEST);
 	}
 	clock_t end = clock();
 
@@ -135,7 +139,7 @@ int main(void)
 		if (tests[i].equivalency.alpha && tests[i].equivalency.trans)
 			continue;
 		printf("Test %d: [failed]\n\talpha-equivalency: %d\n\ttrans-equivalency: %d\n",
-		       i + 1, tests[i].equivalency.alpha,
+		       i + 1 + STARTTEST, tests[i].equivalency.alpha,
 		       tests[i].equivalency.trans);
 	}
 }

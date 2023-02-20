@@ -32,7 +32,6 @@
 #include <malloc.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdatomic.h> // reference counting
 #include <string.h>
 
 #include <store.h>
@@ -85,7 +84,7 @@ struct kv {
 struct node {
 	uint8_t element_arity;
 	uint8_t branch_arity;
-	volatile uint16_t ref_count; // reference counting
+	uint16_t ref_count; // reference counting
 	uint32_t element_map;
 	uint32_t branch_map;
 	STORE_NODE_ELEMENT_T content[];
@@ -94,12 +93,11 @@ struct node {
 struct collision_node {
 	uint8_t element_arity; // MUST SHARE LAYOUT WITH struct node
 	uint8_t branch_arity; // MUST SHARE LAYOUT WITH struct node
-	volatile uint16_t
-		ref_count; // MUST SHARE LAYOUT WITH struct node // reference counting
+	uint16_t ref_count; // MUST SHARE LAYOUT WITH struct node // reference counting
 	STORE_NODE_ELEMENT_T content[];
 };
 
-static const struct node empty_node = {
+static struct node empty_node = {
 	.branch_arity = 0,
 	.element_arity = 0,
 	.ref_count = 1,
@@ -109,7 +107,7 @@ static const struct node empty_node = {
 
 #define STORE_NODE_ELEMENTS(node) (node)->content
 #define STORE_NODE_BRANCHES(node)                                              \
-	((STORE_NODE_BRANCH_T const *)&(node)->content[(node)->element_arity])
+	((STORE_NODE_BRANCH_T *)&(node)->content[(node)->element_arity])
 
 #define STORE_NODE_ELEMENTS_SIZE(length)                                       \
 	(sizeof(STORE_NODE_ELEMENT_T) * (length))
@@ -140,98 +138,96 @@ collision_node_new(const STORE_NODE_ELEMENT_T *values, uint8_t element_arity);
 static void node_destroy(struct node *node);
 
 // reference counting
-static inline struct node *store_node_acquire(const struct node *node);
+static struct node *store_node_acquire(struct node *node);
 
 // reference counting
-static inline void store_node_release(const struct node *node);
+static void store_node_release(struct node *node);
 
 // top-level functions
-static STORE_VALUE_T node_get(const struct node *node, STORE_EQUALSFN_T(equals),
-			      const STORE_KEY_T key, uint32_t hash,
-			      unsigned shift, int *found);
+static STORE_VALUE_T node_get(struct node *node, STORE_EQUALSFN_T(equals),
+			      STORE_KEY_T key, uint32_t hash, unsigned shift,
+			      int *found);
 
-static struct node *node_update(const struct node *node, STORE_HASHFN_T(hashfn),
-				STORE_EQUALSFN_T(equals), const STORE_KEY_T key,
-				const STORE_VALUE_T value, uint32_t hash,
+static struct node *node_update(struct node *node, STORE_HASHFN_T(hashfn),
+				STORE_EQUALSFN_T(equals), STORE_KEY_T key,
+				STORE_VALUE_T value, uint32_t hash,
 				unsigned shift, int *found);
 
-static struct node *node_assoc(const struct node *node, STORE_HASHFN_T(hashfn),
-			       STORE_EQUALSFN_T(equals), const STORE_KEY_T key,
-			       STORE_ASSOCFN_T(fn), const void *user_data,
+static struct node *node_assoc(struct node *node, STORE_HASHFN_T(hashfn),
+			       STORE_EQUALSFN_T(equals), STORE_KEY_T key,
+			       STORE_ASSOCFN_T(fn), void *user_data,
 			       uint32_t hash, unsigned shift, int *found);
 
-static struct node *node_del(const struct node *node, STORE_EQUALSFN_T(equals),
-			     const STORE_KEY_T key, uint32_t hash,
-			     unsigned shift, int *modified);
+static struct node *node_del(struct node *node, STORE_EQUALSFN_T(equals),
+			     STORE_KEY_T key, uint32_t hash, unsigned shift,
+			     int *modified);
 
 // collision node variants
-static STORE_VALUE_T collision_node_get(const struct collision_node *node,
+static STORE_VALUE_T collision_node_get(struct collision_node *node,
 					STORE_EQUALSFN_T(equals),
-					const STORE_KEY_T key, int *found);
+					STORE_KEY_T key, int *found);
 
 static struct collision_node *
-collision_node_update(const struct collision_node *node,
-		      STORE_EQUALSFN_T(equals), const STORE_KEY_T key,
-		      const STORE_VALUE_T value, int *found);
+collision_node_update(struct collision_node *node, STORE_EQUALSFN_T(equals),
+		      STORE_KEY_T key, STORE_VALUE_T value, int *found);
 
-static struct collision_node *
-collision_node_assoc(const struct collision_node *node,
-		     STORE_EQUALSFN_T(equals), const STORE_KEY_T key,
-		     STORE_ASSOCFN_T(fn), const void *user_data, int *found);
+static struct collision_node *collision_node_assoc(struct collision_node *node,
+						   STORE_EQUALSFN_T(equals),
+						   STORE_KEY_T key,
+						   STORE_ASSOCFN_T(fn),
+						   void *user_data, int *found);
 
-static struct collision_node *
-collision_node_del(const struct collision_node *node, STORE_EQUALSFN_T(equals),
-		   const STORE_KEY_T key, int *modified);
+static struct collision_node *collision_node_del(struct collision_node *node,
+						 STORE_EQUALSFN_T(equals),
+						 STORE_KEY_T key,
+						 int *modified);
 
 // helper functions for creation of modified nodes
-static struct node *node_merge(uint32_t hash_l, const STORE_KEY_T key_l,
-			       const STORE_VALUE_T value_l, uint32_t hash_r,
-			       const STORE_KEY_T key_r,
-			       const STORE_VALUE_T value_r, unsigned shift);
+static struct node *node_merge(uint32_t hash_l, STORE_KEY_T key_l,
+			       STORE_VALUE_T value_l, uint32_t hash_r,
+			       STORE_KEY_T key_r, STORE_VALUE_T value_r,
+			       unsigned shift);
 
-static struct node *node_clone_pullup(const struct node *node, uint32_t bitpos,
+static struct node *node_clone_pullup(struct node *node, uint32_t bitpos,
 				      const struct kv element);
 
-static struct node *node_clone_update_branch(const struct node *node,
-					     uint32_t bitpos,
+static struct node *node_clone_update_branch(struct node *node, uint32_t bitpos,
 					     struct node *branch);
 
-static struct node *node_clone_pushdown(const struct node *node,
-					uint32_t bitpos, struct node *branch);
+static struct node *node_clone_pushdown(struct node *node, uint32_t bitpos,
+					struct node *branch);
 
-static struct node *node_clone_insert_element(const struct node *node,
+static struct node *node_clone_insert_element(struct node *node,
+					      uint32_t bitpos, STORE_KEY_T key,
+					      STORE_VALUE_T value);
+
+static struct node *node_clone_update_element(struct node *node,
 					      uint32_t bitpos,
-					      const STORE_KEY_T key,
-					      const STORE_VALUE_T value);
+					      STORE_VALUE_T value);
 
-static struct node *node_clone_update_element(const struct node *node,
-					      uint32_t bitpos,
-					      const STORE_VALUE_T value);
-
-static struct node *node_clone_remove_element(const struct node *node,
+static struct node *node_clone_remove_element(struct node *node,
 					      uint32_t bitpos);
 
 // collision node variants
 static struct collision_node *
-collision_node_clone_insert_element(const struct collision_node *node,
-				    const STORE_KEY_T key,
-				    const STORE_VALUE_T value);
+collision_node_clone_insert_element(struct collision_node *node,
+				    STORE_KEY_T key, STORE_VALUE_T value);
 
 static struct collision_node *
-collision_node_clone_update_element(const struct collision_node *node,
-				    unsigned index, const STORE_VALUE_T value);
+collision_node_clone_update_element(struct collision_node *node, unsigned index,
+				    STORE_VALUE_T value);
 
 static struct collision_node *
-collision_node_clone_remove_element(const struct collision_node *node,
+collision_node_clone_remove_element(struct collision_node *node,
 				    unsigned index);
 
 // equality
-static int node_equals(const struct node *left, const struct node *right,
+static int node_equals(struct node *left, struct node *right,
 		       STORE_EQUALSFN_T(key_equals),
 		       STORE_VALUE_EQUALSFN_T(value_equals), unsigned shift);
 
-static int collision_node_equals(const struct collision_node *left,
-				 const struct collision_node *right,
+static int collision_node_equals(struct collision_node *left,
+				 struct collision_node *right,
 				 STORE_EQUALSFN_T(key_equals),
 				 STORE_VALUE_EQUALSFN_T(value_equals));
 
@@ -240,7 +236,7 @@ static struct store *store_from(struct node *root, unsigned length,
 				STORE_HASHFN_T(hash), STORE_EQUALSFN_T(equals));
 
 // iterator helper functions
-static void iter_push(struct store_iter *iterator, const struct node *node);
+static void iter_push(struct store_iter *iterator, struct node *node);
 
 static void iter_pop(struct store_iter *iterator);
 
@@ -255,20 +251,13 @@ static void node_destroy(struct node *node)
 	DEBUG_NOTICE("    destroying " store_node_debug_fmt "@%p\n",
 		     store_node_debug_args(node), (void *)node);
 
-	// release boxes in node
-	if (node->ref_count == 0) {
-		for (unsigned i = 0; i < node->element_arity; ++i) {
-			struct kv kv = node->content[i];
-			store_release_callback(kv.val);
-		}
-	}
-
 	// reference counting
-	STORE_NODE_BRANCH_T *branches =
-		(STORE_NODE_BRANCH_T *)STORE_NODE_BRANCHES(node);
+	fprintf(stderr, "> node_destroy calling back\n");
+	STORE_NODE_BRANCH_T *branches = STORE_NODE_BRANCHES(node);
 	for (int i = 0; i < node->branch_arity; ++i) {
 		store_node_release(branches[i]);
 	}
+	fprintf(stderr, "> node_destroy calling back done\n");
 
 	free(node);
 }
@@ -276,28 +265,39 @@ static void node_destroy(struct node *node)
 extern void store_acquire_callback(void *data);
 
 // reference counting
-static inline struct node *store_node_acquire(const struct node *node)
+static struct node *store_node_acquire(struct node *node)
 {
 	if (node == &empty_node)
-		return (struct node *)node;
-	atomic_fetch_add((uint16_t *)&node->ref_count, 1u);
+		return node;
+	node->ref_count++;
 
 	// aqcuire boxes in node
+	fprintf(stderr, "> node_acquire calling back\n");
 	for (unsigned i = 0; i < node->element_arity; ++i) {
 		struct kv kv = node->content[i];
 		store_acquire_callback(kv.val);
 	}
+	fprintf(stderr, "> node_acquire calling back done\n");
 
-	return (struct node *)node;
+	return node;
 }
 
 // reference counting
-static inline void store_node_release(const struct node *node)
+static void store_node_release(struct node *node)
 {
 	if (node == &empty_node)
 		return;
-	if (atomic_fetch_sub((uint16_t *)&node->ref_count, 1u) == 1)
-		node_destroy((struct node *)node);
+
+	// release boxes in node
+	fprintf(stderr, "> node_release calling back\n");
+	for (unsigned i = 0; i < node->element_arity; ++i) {
+		struct kv kv = node->content[i];
+		store_release_callback(kv.val);
+	}
+	fprintf(stderr, "> node_release calling back done\n");
+
+	if (node->ref_count-- == 1)
+		node_destroy(node);
 }
 
 /**
@@ -335,9 +335,9 @@ static struct node *node_new(uint32_t element_map, uint32_t branch_map,
 	return result;
 }
 
-static STORE_VALUE_T collision_node_get(const struct collision_node *node,
+static STORE_VALUE_T collision_node_get(struct collision_node *node,
 					STORE_EQUALSFN_T(equals),
-					const STORE_KEY_T key, int *found)
+					STORE_KEY_T key, int *found)
 {
 	for (unsigned i = 0; i < node->element_arity; ++i) {
 		struct kv kv = node->content[i];
@@ -351,13 +351,13 @@ static STORE_VALUE_T collision_node_get(const struct collision_node *node,
 	return (STORE_VALUE_T)0;
 }
 
-static STORE_VALUE_T node_get(const struct node *node, STORE_EQUALSFN_T(equals),
-			      const STORE_KEY_T key, uint32_t hash,
-			      unsigned shift, int *found)
+static STORE_VALUE_T node_get(struct node *node, STORE_EQUALSFN_T(equals),
+			      STORE_KEY_T key, uint32_t hash, unsigned shift,
+			      int *found)
 {
 	if (shift >= HASH_TOTAL_WIDTH)
-		return collision_node_get((const struct collision_node *)node,
-					  equals, key, found);
+		return collision_node_get((struct collision_node *)node, equals,
+					  key, found);
 
 	const uint32_t bitpos = 1u << store_mask(hash, shift);
 
@@ -377,10 +377,9 @@ static STORE_VALUE_T node_get(const struct node *node, STORE_EQUALSFN_T(equals),
 	return (STORE_VALUE_T)0;
 }
 
-static struct node *node_clone_insert_element(const struct node *node,
-					      uint32_t bitpos,
-					      const STORE_KEY_T key,
-					      const STORE_VALUE_T value)
+static struct node *node_clone_insert_element(struct node *node,
+					      uint32_t bitpos, STORE_KEY_T key,
+					      STORE_VALUE_T value)
 {
 	STORE_NODE_ELEMENT_T elements[1u << HASH_PARTITION_WIDTH];
 	const unsigned index = store_index(node->element_map, bitpos);
@@ -402,9 +401,9 @@ static struct node *node_clone_insert_element(const struct node *node,
 			node->branch_arity);
 }
 
-static struct node *node_clone_update_element(const struct node *node,
+static struct node *node_clone_update_element(struct node *node,
 					      uint32_t bitpos,
-					      const STORE_VALUE_T value)
+					      STORE_VALUE_T value)
 {
 	STORE_NODE_ELEMENT_T elements[1u << HASH_PARTITION_WIDTH];
 	const unsigned index = store_index(node->element_map, bitpos);
@@ -417,8 +416,7 @@ static struct node *node_clone_update_element(const struct node *node,
 			node->branch_arity);
 }
 
-static struct node *node_clone_update_branch(const struct node *node,
-					     uint32_t bitpos,
+static struct node *node_clone_update_branch(struct node *node, uint32_t bitpos,
 					     struct node *branch)
 {
 	STORE_NODE_BRANCH_T branches[1u << HASH_PARTITION_WIDTH];
@@ -432,8 +430,8 @@ static struct node *node_clone_update_branch(const struct node *node,
 			branches, node->branch_arity);
 }
 
-static struct node *node_clone_pushdown(const struct node *node,
-					uint32_t bitpos, struct node *branch)
+static struct node *node_clone_pushdown(struct node *node, uint32_t bitpos,
+					struct node *branch)
 {
 	STORE_NODE_ELEMENT_T elements[1u << HASH_PARTITION_WIDTH];
 	STORE_NODE_BRANCH_T branches[1u << HASH_PARTITION_WIDTH];
@@ -475,10 +473,10 @@ collision_node_new(const STORE_NODE_ELEMENT_T *values, uint8_t element_arity)
 	return result;
 }
 
-static struct node *node_merge(uint32_t hash_l, const STORE_KEY_T key_l,
-			       const STORE_VALUE_T value_l, uint32_t hash_r,
-			       const STORE_KEY_T key_r,
-			       const STORE_VALUE_T value_r, unsigned shift)
+static struct node *node_merge(uint32_t hash_l, STORE_KEY_T key_l,
+			       STORE_VALUE_T value_l, uint32_t hash_r,
+			       STORE_KEY_T key_r, STORE_VALUE_T value_r,
+			       unsigned shift)
 {
 	uint32_t bitpos_l = 1u << store_mask(hash_l, shift);
 	uint32_t bitpos_r = 1u << store_mask(hash_r, shift);
@@ -519,8 +517,8 @@ static struct node *node_merge(uint32_t hash_l, const STORE_KEY_T key_l,
 }
 
 static struct collision_node *
-collision_node_clone_update_element(const struct collision_node *node,
-				    unsigned index, const STORE_VALUE_T value)
+collision_node_clone_update_element(struct collision_node *node, unsigned index,
+				    STORE_VALUE_T value)
 {
 	STORE_NODE_ELEMENT_T elements[node->element_arity];
 
@@ -532,9 +530,8 @@ collision_node_clone_update_element(const struct collision_node *node,
 }
 
 static struct collision_node *
-collision_node_clone_insert_element(const struct collision_node *node,
-				    const STORE_KEY_T key,
-				    const STORE_VALUE_T value)
+collision_node_clone_insert_element(struct collision_node *node,
+				    STORE_KEY_T key, STORE_VALUE_T value)
 {
 	STORE_NODE_ELEMENT_T elements[node->element_arity + 1];
 
@@ -547,9 +544,8 @@ collision_node_clone_insert_element(const struct collision_node *node,
 }
 
 static struct collision_node *
-collision_node_update(const struct collision_node *node,
-		      STORE_EQUALSFN_T(equals), const STORE_KEY_T key,
-		      const STORE_VALUE_T value, int *found)
+collision_node_update(struct collision_node *node, STORE_EQUALSFN_T(equals),
+		      STORE_KEY_T key, STORE_VALUE_T value, int *found)
 {
 	for (unsigned i = 0; i < node->element_arity; ++i) {
 		struct kv kv = node->content[i];
@@ -564,28 +560,27 @@ collision_node_update(const struct collision_node *node,
 	return collision_node_clone_insert_element(node, key, value);
 }
 
-static struct node *node_update(const struct node *node, STORE_HASHFN_T(hashfn),
-				STORE_EQUALSFN_T(equals), const STORE_KEY_T key,
-				const STORE_VALUE_T value, uint32_t hash,
+static struct node *node_update(struct node *node, STORE_HASHFN_T(hashfn),
+				STORE_EQUALSFN_T(equals), STORE_KEY_T key,
+				STORE_VALUE_T value, uint32_t hash,
 				unsigned shift, int *found)
 {
 	if (shift >= HASH_TOTAL_WIDTH)
 		return (struct node *)collision_node_update(
-			(const struct collision_node *)node, equals, key, value,
+			(struct collision_node *)node, equals, key, value,
 			found);
 
 	const uint32_t bitpos = 1u << store_mask(hash, shift);
 
 	if (node->branch_map & bitpos) {
-		const struct node *sub_node =
-			STORE_NODE_BRANCH_AT(node, bitpos);
+		struct node *sub_node = STORE_NODE_BRANCH_AT(node, bitpos);
 		struct node *new_sub_node =
 			node_update(sub_node, hashfn, equals, key, value, hash,
 				    shift + HASH_PARTITION_WIDTH, found);
 		return node_clone_update_branch(node, bitpos, new_sub_node);
 
 	} else if (node->element_map & bitpos) {
-		const STORE_KEY_T current_key =
+		STORE_KEY_T current_key =
 			STORE_NODE_ELEMENT_AT(node, bitpos).key;
 
 		if (equals(current_key, key)) {
@@ -593,7 +588,7 @@ static struct node *node_update(const struct node *node, STORE_HASHFN_T(hashfn),
 			return node_clone_update_element(node, bitpos, value);
 
 		} else {
-			const STORE_VALUE_T current_value =
+			STORE_VALUE_T current_value =
 				STORE_NODE_ELEMENT_AT(node, bitpos).val;
 			struct node *sub_node =
 				node_merge(hashfn(current_key), current_key,
@@ -607,7 +602,7 @@ static struct node *node_update(const struct node *node, STORE_HASHFN_T(hashfn),
 	}
 }
 
-static struct node *node_clone_remove_element(const struct node *node,
+static struct node *node_clone_remove_element(struct node *node,
 					      uint32_t bitpos)
 {
 	DEBUG_NOTICE("removing element with bit position 0x%x\n", bitpos);
@@ -629,7 +624,7 @@ static struct node *node_clone_remove_element(const struct node *node,
  * 'Pullup' is the inverse of pushdown.
  * It's the process of 'pulling an entry up' from a branch, inlining it as an element instead.
  */
-static struct node *node_clone_pullup(const struct node *node, uint32_t bitpos,
+static struct node *node_clone_pullup(struct node *node, uint32_t bitpos,
 				      const struct kv element)
 {
 	STORE_NODE_BRANCH_T branches[1u << HASH_PARTITION_WIDTH];
@@ -657,8 +652,7 @@ static struct node *node_clone_pullup(const struct node *node, uint32_t bitpos,
 }
 
 static struct collision_node *
-collision_node_clone_remove_element(const struct collision_node *node,
-				    unsigned index)
+collision_node_clone_remove_element(struct collision_node *node, unsigned index)
 {
 	STORE_NODE_ELEMENT_T elements[node->element_arity - 1];
 
@@ -680,9 +674,9 @@ collision_node_clone_remove_element(const struct collision_node *node,
  *
  * @return
  */
-static struct collision_node *
-collision_node_del(const struct collision_node *node, STORE_EQUALSFN_T(equals),
-		   const STORE_KEY_T key, int *modified)
+static struct collision_node *collision_node_del(struct collision_node *node,
+						 STORE_EQUALSFN_T(equals),
+						 STORE_KEY_T key, int *modified)
 {
 	for (unsigned i = 0; i < node->element_arity; ++i) {
 		struct kv kv = node->content[i];
@@ -705,14 +699,13 @@ collision_node_del(const struct collision_node *node, STORE_EQUALSFN_T(equals),
 	return NULL;
 }
 
-static struct node *node_del(const struct node *node, STORE_EQUALSFN_T(equals),
-			     const STORE_KEY_T key, uint32_t hash,
-			     unsigned shift, int *modified)
+static struct node *node_del(struct node *node, STORE_EQUALSFN_T(equals),
+			     STORE_KEY_T key, uint32_t hash, unsigned shift,
+			     int *modified)
 {
 	if (shift >= HASH_TOTAL_WIDTH)
 		return (struct node *)collision_node_del(
-			(const struct collision_node *)node, equals, key,
-			modified);
+			(struct collision_node *)node, equals, key, modified);
 
 	const uint32_t bitpos = 1u << store_mask(hash, shift);
 
@@ -768,10 +761,11 @@ static struct node *node_del(const struct node *node, STORE_EQUALSFN_T(equals),
 	}
 }
 
-static struct collision_node *
-collision_node_assoc(const struct collision_node *node,
-		     STORE_EQUALSFN_T(equals), const STORE_KEY_T key,
-		     STORE_ASSOCFN_T(fn), const void *user_data, int *found)
+static struct collision_node *collision_node_assoc(struct collision_node *node,
+						   STORE_EQUALSFN_T(equals),
+						   STORE_KEY_T key,
+						   STORE_ASSOCFN_T(fn),
+						   void *user_data, int *found)
 {
 	STORE_VALUE_T new_value;
 	for (unsigned i = 0; i < node->element_arity; ++i) {
@@ -779,55 +773,52 @@ collision_node_assoc(const struct collision_node *node,
 		if (equals(kv.key, key)) {
 			*found = 1;
 			STORE_VALUE_T old_value = kv.val;
-			new_value = fn(key, old_value, (void *)user_data);
+			new_value = fn(key, old_value, user_data);
 			return collision_node_clone_update_element(node, i,
 								   new_value);
 		}
 	}
 
-	new_value = fn((STORE_KEY_T)0, (STORE_VALUE_T)0, (void *)user_data);
+	new_value = fn((STORE_KEY_T)0, (STORE_VALUE_T)0, user_data);
 	return collision_node_clone_insert_element(node, key, new_value);
 }
 
-static struct node *node_assoc(const struct node *node, STORE_HASHFN_T(hashfn),
-			       STORE_EQUALSFN_T(equals), const STORE_KEY_T key,
-			       STORE_ASSOCFN_T(fn), const void *user_data,
+static struct node *node_assoc(struct node *node, STORE_HASHFN_T(hashfn),
+			       STORE_EQUALSFN_T(equals), STORE_KEY_T key,
+			       STORE_ASSOCFN_T(fn), void *user_data,
 			       uint32_t hash, unsigned shift, int *found)
 {
 	if (shift >= HASH_TOTAL_WIDTH)
 		return (struct node *)collision_node_assoc(
-			(const struct collision_node *)node, equals, key, fn,
+			(struct collision_node *)node, equals, key, fn,
 			user_data, found);
 
 	const uint32_t bitpos = 1u << store_mask(hash, shift);
 
 	if (node->branch_map & bitpos) {
-		const struct node *sub_node =
-			STORE_NODE_BRANCH_AT(node, bitpos);
+		struct node *sub_node = STORE_NODE_BRANCH_AT(node, bitpos);
 		struct node *new_sub_node =
 			node_assoc(sub_node, hashfn, equals, key, fn, user_data,
 				   hash, shift + HASH_PARTITION_WIDTH, found);
 		return node_clone_update_branch(node, bitpos, new_sub_node);
 
 	} else if (node->element_map & bitpos) {
-		const STORE_KEY_T current_key =
+		STORE_KEY_T current_key =
 			STORE_NODE_ELEMENT_AT(node, bitpos).key;
 
 		if (equals(current_key, key)) {
 			*found = 1;
-			const STORE_VALUE_T old_value =
+			STORE_VALUE_T old_value =
 				STORE_NODE_ELEMENT_AT(node, bitpos).val;
-			STORE_VALUE_T new_value =
-				fn(key, old_value, (void *)user_data);
+			STORE_VALUE_T new_value = fn(key, old_value, user_data);
 			return node_clone_update_element(node, bitpos,
 							 new_value);
 
 		} else {
-			const STORE_VALUE_T current_value =
+			STORE_VALUE_T current_value =
 				STORE_NODE_ELEMENT_AT(node, bitpos).val;
-			const STORE_VALUE_T new_value =
-				fn((STORE_KEY_T)0, (STORE_VALUE_T)0,
-				   (void *)user_data);
+			STORE_VALUE_T new_value =
+				fn((STORE_KEY_T)0, (STORE_VALUE_T)0, user_data);
 			struct node *sub_node =
 				node_merge(hashfn(current_key), current_key,
 					   current_value, hash, key, new_value,
@@ -836,14 +827,14 @@ static struct node *node_assoc(const struct node *node, STORE_HASHFN_T(hashfn),
 		}
 
 	} else {
-		const STORE_VALUE_T value =
-			fn((STORE_KEY_T)0, (STORE_VALUE_T)0, (void *)user_data);
+		STORE_VALUE_T value =
+			fn((STORE_KEY_T)0, (STORE_VALUE_T)0, user_data);
 		return node_clone_insert_element(node, bitpos, key, value);
 	}
 }
 
-static int collision_node_equals(const struct collision_node *left,
-				 const struct collision_node *right,
+static int collision_node_equals(struct collision_node *left,
+				 struct collision_node *right,
 				 STORE_EQUALSFN_T(key_equals),
 				 STORE_VALUE_EQUALSFN_T(value_equals))
 {
@@ -872,7 +863,7 @@ static int collision_node_equals(const struct collision_node *left,
 	return 1; // compared all elements in left node, never had an element without match.
 }
 
-static int node_equals(const struct node *left, const struct node *right,
+static int node_equals(struct node *left, struct node *right,
 		       STORE_EQUALSFN_T(key_equals),
 		       STORE_VALUE_EQUALSFN_T(value_equals), unsigned shift)
 {
@@ -929,18 +920,37 @@ struct store *store_new(STORE_HASHFN_T(hash), STORE_EQUALSFN_T(equals))
 	return store_from((struct node *)&empty_node, 0, hash, equals);
 }
 
-struct store *store_acquire(const struct store *store)
+struct store *store_acquire(struct store *store)
 {
-	atomic_fetch_add((uint32_t *)&store->ref_count, 1u);
+	// acquire boxes in node // TODO: Necessary? Probably, as release lock
+	fprintf(stderr, "> store_acquire calling back\n");
+	struct node *node = store->root;
+	for (unsigned i = 0; i < node->element_arity; ++i) {
+		struct kv kv = node->content[i];
+		store_acquire_callback(kv.val);
+	}
+	fprintf(stderr, "> store_acquire calling back done\n");
+
+	store->ref_count++;
 	DEBUG_NOTICE("ACQ %p: %d\n", (void *)store, store->ref_count);
-	return (struct store *)store;
+	return store;
 }
 
 void store_release(struct store **store)
 {
 	DEBUG_NOTICE("REL %p: %d\n", (void *)*store, (*store)->ref_count - 1);
-	if (atomic_fetch_sub((uint32_t *)&((*store)->ref_count), 1u) == 1u)
-		store_destroy((struct store **)store);
+	if ((*store)->ref_count-- == 1) {
+		store_destroy(store);
+	} else {
+		// release boxes in node // TODO: Necessary?
+		fprintf(stderr, "> store_release calling back\n");
+		struct node *node = (*store)->root;
+		for (unsigned i = 0; i < node->element_arity; ++i) {
+			struct kv kv = node->content[i];
+			store_release_callback(kv.val);
+		}
+		fprintf(stderr, "> store_release calling back done\n");
+	}
 }
 
 struct store *store_of(STORE_HASHFN_T(hash), STORE_EQUALSFN_T(equals),
@@ -961,8 +971,8 @@ unsigned store_length(const struct store *store)
 	return store->length;
 }
 
-struct store *store_set(const struct store *store, const STORE_KEY_T key,
-			const STORE_VALUE_T value, int *replaced)
+struct store *store_set(const struct store *store, STORE_KEY_T key,
+			STORE_VALUE_T value, int *replaced)
 {
 	const uint32_t hash = store->hash(key);
 	int found = 0;
@@ -975,8 +985,7 @@ struct store *store_set(const struct store *store, const STORE_KEY_T key,
 			  store->hash, store->equals);
 }
 
-STORE_VALUE_T store_get(const struct store *store, const STORE_KEY_T key,
-			int *found)
+STORE_VALUE_T store_get(const struct store *store, STORE_KEY_T key, int *found)
 {
 	uint32_t hash = store->hash(key);
 	int tmp = 0;
@@ -984,23 +993,8 @@ STORE_VALUE_T store_get(const struct store *store, const STORE_KEY_T key,
 			found ? found : &tmp);
 }
 
-struct store *store_del(const struct store *store, const STORE_KEY_T key,
-			int *modified)
-{
-	const uint32_t hash = store->hash(key);
-	int found = 0;
-	int *found_p = modified ? modified : &found;
-	*found_p = 0;
-	struct node *new_root =
-		node_del(store->root, store->equals, key, hash, 0, found_p);
-	if (!*found_p)
-		return (struct store *)store;
-	return store_from(store_node_acquire(new_root), store->length - 1,
-			  store->hash, store->equals);
-}
-
-struct store *store_assoc(const struct store *store, const STORE_KEY_T key,
-			  STORE_ASSOCFN_T(fn), const void *user_data)
+struct store *store_assoc(const struct store *store, STORE_KEY_T key,
+			  STORE_ASSOCFN_T(fn), void *user_data)
 {
 	const uint32_t hash = store->hash(key);
 	int found = 0;
@@ -1044,8 +1038,11 @@ static char *format_binary(uint32_t value, char *buffer)
 	return buffer;
 }
 
-static void store_node_repr(const struct node *node, const char *kp,
-			    const char *vp, unsigned shift, unsigned i_level)
+// TODO: Fix format stirng literal error
+__attribute__((__format__(__printf__, 2, 0)))
+__attribute__((__format__(__printf__, 3, 0))) static void
+store_node_repr(struct node *node, const char *kp, const char *vp,
+		unsigned shift, unsigned i_level)
 {
 	if (shift >= HASH_TOTAL_WIDTH) {
 		iprintf(i_level, "\"collision node (omitted)\"%s", "");
@@ -1081,8 +1078,8 @@ static void store_node_repr(const struct node *node, const char *kp,
 	iprintf(i_level - 1, "}%s", "");
 }
 
-void store_repr(const struct store *store, const char *key_prefix,
-		const char *value_prefix)
+static void store_repr(const struct store *store, const char *key_prefix,
+		       const char *value_prefix)
 {
 	printf("{\n");
 	iprintf(1, "\"length\": %d,\n", store->length);
@@ -1101,7 +1098,7 @@ void store_iter_init(struct store_iter *iterator, const struct store *store)
 	iterator->node_stack[0] = store->root;
 }
 
-static void iter_push(struct store_iter *iterator, const struct node *node)
+static void iter_push(struct store_iter *iterator, struct node *node)
 {
 	iterator->stack_level += 1;
 	iterator->element_cursor = 0;
@@ -1123,8 +1120,7 @@ int store_iter_next(struct store_iter *iterator, STORE_KEY_T *key,
 	if (iterator->stack_level == -1)
 		return 0;
 
-	const struct node *current_node =
-		iterator->node_stack[iterator->stack_level];
+	struct node *current_node = iterator->node_stack[iterator->stack_level];
 	unsigned *branch_cursor =
 		iterator->branch_cursor_stack + iterator->stack_level;
 	if (*branch_cursor == 0 &&
