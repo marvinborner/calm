@@ -244,25 +244,13 @@ static void iter_pop(struct store_iter *iterator);
  * definitions
  */
 
-extern void store_release_callback(void *data);
-
 static void node_destroy(struct node *node)
 {
 	DEBUG_NOTICE("    destroying " store_node_debug_fmt "@%p\n",
 		     store_node_debug_args(node), (void *)node);
 
-	// reference counting
-	fprintf(stderr, "> node_destroy calling back\n");
-	STORE_NODE_BRANCH_T *branches = STORE_NODE_BRANCHES(node);
-	for (int i = 0; i < node->branch_arity; ++i) {
-		store_node_release(branches[i]);
-	}
-	fprintf(stderr, "> node_destroy calling back done\n");
-
 	free(node);
 }
-
-extern void store_acquire_callback(void *data);
 
 // reference counting
 static struct node *store_node_acquire(struct node *node)
@@ -270,15 +258,6 @@ static struct node *store_node_acquire(struct node *node)
 	if (node == &empty_node)
 		return node;
 	node->ref_count++;
-
-	// aqcuire boxes in node
-	fprintf(stderr, "> node_acquire calling back\n");
-	for (unsigned i = 0; i < node->element_arity; ++i) {
-		struct kv kv = node->content[i];
-		store_acquire_callback(kv.val);
-	}
-	fprintf(stderr, "> node_acquire calling back done\n");
-
 	return node;
 }
 
@@ -287,14 +266,6 @@ static void store_node_release(struct node *node)
 {
 	if (node == &empty_node)
 		return;
-
-	// release boxes in node
-	fprintf(stderr, "> node_release calling back\n");
-	for (unsigned i = 0; i < node->element_arity; ++i) {
-		struct kv kv = node->content[i];
-		store_release_callback(kv.val);
-	}
-	fprintf(stderr, "> node_release calling back done\n");
 
 	if (node->ref_count-- == 1)
 		node_destroy(node);
@@ -922,15 +893,6 @@ struct store *store_new(STORE_HASHFN_T(hash), STORE_EQUALSFN_T(equals))
 
 struct store *store_acquire(struct store *store)
 {
-	// acquire boxes in node // TODO: Necessary? Probably, as release lock
-	fprintf(stderr, "> store_acquire calling back\n");
-	struct node *node = store->root;
-	for (unsigned i = 0; i < node->element_arity; ++i) {
-		struct kv kv = node->content[i];
-		store_acquire_callback(kv.val);
-	}
-	fprintf(stderr, "> store_acquire calling back done\n");
-
 	store->ref_count++;
 	DEBUG_NOTICE("ACQ %p: %d\n", (void *)store, store->ref_count);
 	return store;
@@ -939,18 +901,8 @@ struct store *store_acquire(struct store *store)
 void store_release(struct store **store)
 {
 	DEBUG_NOTICE("REL %p: %d\n", (void *)*store, (*store)->ref_count - 1);
-	if ((*store)->ref_count-- == 1) {
+	if ((*store)->ref_count-- == 1)
 		store_destroy(store);
-	} else {
-		// release boxes in node // TODO: Necessary?
-		fprintf(stderr, "> store_release calling back\n");
-		struct node *node = (*store)->root;
-		for (unsigned i = 0; i < node->element_arity; ++i) {
-			struct kv kv = node->content[i];
-			store_release_callback(kv.val);
-		}
-		fprintf(stderr, "> store_release calling back done\n");
-	}
 }
 
 struct store *store_of(STORE_HASHFN_T(hash), STORE_EQUALSFN_T(equals),
