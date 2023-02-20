@@ -4,10 +4,10 @@
 CC = gcc
 TG = ctags
 
-BUILD = $(PWD)/build
-SRC = $(PWD)/src
-INC = $(PWD)/inc
-LIB = $(PWD)/lib
+BUILD = ${CURDIR}/build
+SRC = ${CURDIR}/src
+INC = ${CURDIR}/inc
+LIB = ${CURDIR}/lib
 SRCS = $(wildcard $(SRC)/*.c)
 OBJS = $(patsubst $(SRC)/%.c, $(BUILD)/%.o, $(SRCS))
 
@@ -26,12 +26,19 @@ ifdef DEBUG # TODO: Somehow clean automagically
 CFLAGS += $(CFLAGS_DEBUG)
 endif
 
+ifeq ($(PREFIX),)
+    PREFIX := /usr/local
+endif
+
 all: compile sync
 
 compile: $(BUILD) $(OBJS) $(BUILD)/calm
 
 clean:
 	@rm -rf $(BUILD)/*
+
+install:
+	@install -m 755 $(BUILD)/calm $(DESTDIR)$(PREFIX)/bin/
 
 sync: # Ugly hack
 	@$(MAKE) $(BUILD)/calm --always-make --dry-run | grep -wE 'gcc|g\+\+' | grep -w '\-c' | jq -nR '[inputs|{directory:".", command:., file: match(" [^ ]+$$").string[1:]}]' >compile_commands.json
