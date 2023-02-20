@@ -5,6 +5,7 @@
 
 #include <term.h>
 
-struct term *parse(const char *term);
+struct term *parse_blc(const char *term);
+struct term *parse_bruijn(const char *term);
 
 #endif

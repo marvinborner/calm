@@ -168,7 +168,7 @@ static void test_explode(void)
 			deviations++;
 	}
 
-	printf("Test explode ((n ω) x) with n<=%d: %.5fs, %d transition deviations\n",
+	printf("Test explode (λx.((n ω) x)) with n<=%d: %.5fs, %d transition deviations\n",
 	       limit, time, deviations);
 }
 
@@ -205,7 +205,6 @@ static void callback(int i, char ch, void *data)
 		fprintf(stderr, "Transition deviation at index %d!\n", i);
 		test->equivalency.trans = 0;
 	}
-	/* fprintf(stderr, "\n%d: %c\n", i, ch); */
 }
 
 int main(void)
@@ -227,11 +226,11 @@ int main(void)
 		tests[i].trans = read_file(trans_template);
 
 		char *in = read_file(in_template);
-		tests[i].in = parse(in);
+		tests[i].in = parse_bruijn(in);
 		free(in);
 
 		char *red = read_file(red_template);
-		tests[i].red = parse(red);
+		tests[i].red = parse_bruijn(red);
 		to_bruijn(tests[i].red);
 		free(red);
 
@@ -270,5 +269,5 @@ int main(void)
 	test_explode();
 }
 #else
-static int no_testing;
+__attribute__((unused)) static int no_testing;
 #endif

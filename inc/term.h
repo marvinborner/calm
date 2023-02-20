@@ -31,6 +31,7 @@ struct term *duplicate_term(struct term *term);
 int alpha_equivalency(struct term *a, struct term *b);
 void free_term(struct term *term);
 void print_term(struct term *term);
+void print_blc(struct term *term);
 void print_scheme(struct term *term);
 
 #endif
