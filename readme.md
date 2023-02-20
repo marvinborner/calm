@@ -10,10 +10,7 @@
 -   Useful for proof assistants or as a high-level lambda-term reducer
     of functional programming languages
 -   Based on bleeding-edge research results
--   Exponentially big normal forms of the family $e_n=λx.c_nωx$, where
-    $ω:=λx.xx$ and $c_n$ denotes the $n$-th Church numeral, consume only
-    a linear in $n$ amount of memory and are computed in linear
-    time\[0\]
+-   Mostly linear time/memory complexity\[0\]
 
 ## Libraries
 
@@ -24,7 +21,8 @@
 
 ## Research
 
-Interesting/relevant research in no particular order:
+The base of this project is the RKNL\[0\] abstract machine. Other
+interesting/relevant research in no particular order:
 
 0.  Biernacka, M., Charatonik, W., & Drab, T. (2022). A simple and
     efficient implementation of strong call by need by an abstract
