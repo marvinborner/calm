@@ -12,6 +12,15 @@
 -   Based on bleeding-edge research results
 -   Mostly linear time/memory complexity\[0\]
 
+## Garbage collection
+
+In theory the RKNL abstract machine should be able to be implementented
+without a periodic/incremental garbage collector.
+
+I tried implementing it using reference counting but eventually gave up.
+You can find my attempts at
+[a0b4299cbd](https://github.com/marvinborner/calm/tree/a0b4299cbda261684ad464b22c07a07bcf3acbed).
+
 ## Libraries
 
 -   [CHAMP](https://github.com/ammut/immutable-c-ollections) \[MIT\]:
